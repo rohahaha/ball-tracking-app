@@ -8,6 +8,20 @@ import colorsys
 import tempfile
 import os
 import traceback
+import urllib.request
+
+def download_weights():
+    weights_path = "yolo/yolov4.weights"
+    if not os.path.exists(weights_path):
+        url = "https://drive.google.com/uc?export=download&id=1XWTMChKOcrVpo-uaIldGp6bRzBfYIGqJ"
+        os.makedirs("yolo", exist_ok=True)
+        st.info("Downloading YOLOv4 weights file... This might take a while.")
+        try:
+            urllib.request.urlretrieve(url, weights_path)
+            st.success("Download completed!")
+        except Exception as e:
+            st.error(f"Failed to download weights file: {str(e)}")
+            st.stop()
 
 
 # YOLOv4 모델 파일 경로 설정
@@ -475,6 +489,9 @@ def process_video(video_path, initial_bbox, lower_color, upper_color, min_radius
 st.title('개선된 공 추적 및 에너지 분석기')
 
 print_opencv_info()
+
+if st.button("Download YOLOv4 weights"):
+    download_weights()
 
 uploaded_file = st.file_uploader("비디오 파일을 선택하세요.", type=['mp4', 'avi', 'mov'])
 
