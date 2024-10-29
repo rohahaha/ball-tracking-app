@@ -1,2 +1,30 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Python files
+*.py text diff=python
+
+# Documentation
+*.md text diff=markdown
+*.txt text
+
+# Configurations
+*.yml text
+*.yaml text
+*.json text
+*.toml text
+*.cfg text
+
+# Streamlit specific
+*.streamlit/* text
+
+# Binary files
+*.weights binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.mov binary
+*.mp4 binary
+*.avi binary
