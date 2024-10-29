@@ -8,96 +8,11 @@ import colorsys
 import tempfile
 import os
 import traceback
-import urllib.request
-
-# Streamlit UI 시작
-st.title('개선된 공 추적 및 에너지 분석기')
-
-st.info(f"OpenCV 버전: {cv2.__version__}")
-
-# YOLO 파일 경로 설정
-YOLO_DIR = "yolo"
-cfg_path = os.path.join(YOLO_DIR, "yolov3.cfg")
-weights_path = os.path.join(YOLO_DIR, "yolov3.weights")
-names_path = os.path.join(YOLO_DIR, "coco.names")
-
-# 파일 다운로드 함수
-@st.cache_data
-def download_yolo_files():
-    try:
-        os.makedirs(YOLO_DIR, exist_ok=True)
-        
-        files_to_download = {
-            cfg_path: "https://raw.githubusercontent.com/pjreddie/darknet/master/cfg/yolov3.cfg",
-            names_path: "https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names",
-            weights_path: "https://pjreddie.com/media/files/yolov3.weights"
-        }
-        
-        for file_path, url in files_to_download.items():
-            if not os.path.exists(file_path):
-                st.info(f"Downloading {os.path.basename(file_path)}...")
-                urllib.request.urlretrieve(url, file_path)
-                st.success(f"Downloaded {os.path.basename(file_path)}")
-        
-        return True
-    except Exception as e:
-        st.error(f"Error downloading files: {str(e)}")
-        return False
-
-# 파일 존재 여부 확인
-files_exist = all(os.path.exists(f) for f in [cfg_path, weights_path, names_path])
-
-if not files_exist:
-    st.warning("YOLO 모델 파일이 없습니다. 다운로드가 필요합니다.")
-    if st.button("YOLO 파일 다운로드"):
-        success = download_yolo_files()
-        if not success:
-            st.stop()
-    else:
-        st.stop()
-
-# 로딩 스피너와 함께 모델 로드
-with st.spinner('YOLO 모델을 로드하는 중...'):
-    try:
-        net = cv2.dnn.readNet(weights_path, cfg_path)
-        st.success("YOLO 모델 로드 성공!")
-        
-        # 레이어 이름 가져오기
-        layer_names = net.getLayerNames()
-        output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers().flatten()]
-        
-        # COCO 클래스 로드
-        with open(names_path, "r") as f:
-            classes = [line.strip() for line in f.readlines()]
-            
-        st.success("모든 초기화가 완료되었습니다!")
-    except Exception as e:
-        st.error(f"모델 로드 중 오류 발생: {str(e)}")
-        st.error("자세한 오류 정보:")
-        st.code(traceback.format_exc())
-        st.stop()
-
-# selected_color 초기화
-selected_color = None
-
-def download_weights():
-    weights_path = "yolo/yolov4.weights"
-    if not os.path.exists(weights_path):
-        url = "https://drive.google.com/uc?export=download&id=1XWTMChKOcrVpo-uaIldGp6bRzBfYIGqJ"
-        os.makedirs("yolo", exist_ok=True)
-        st.info("Downloading YOLOv4 weights file... This might take a while.")
-        try:
-            urllib.request.urlretrieve(url, weights_path)
-            st.success("Download completed!")
-        except Exception as e:
-            st.error(f"Failed to download weights file: {str(e)}")
-            st.stop()
-
 
 # YOLOv4 모델 파일 경로 설정
-cfg_path = os.path.join("yolo", "yolov4.cfg")
-weights_path = os.path.join("yolo", "yolov4.weights")
-names_path = os.path.join("yolo", "coco.names")
+cfg_path = "yolo/yolov4.cfg"
+weights_path = "yolo/yolov4.weights"
+names_path = "yolo/coco.names"
 
 # YOLOv4 모델 로드
 net = cv2.dnn.readNet(weights_path, cfg_path)
@@ -140,7 +55,7 @@ def create_stable_tracker():
         return None
 
 # 마우스 클릭 이벤트 처리 함수
-# def on_mouse_click(event, x, y, flags, param):
+def on_mouse_click(event, x, y, flags, param):
     global selected_color
     if event == cv2.EVENT_LBUTTONDOWN:
         frame = param
@@ -408,24 +323,6 @@ def process_video(video_path, initial_bbox, lower_color, upper_color, min_radius
         st.error("Failed to read the first frame of the video")
         return
 
-    # 색상 선택을 위한 Streamlit 컨트롤
-    st.write("공의 색상을 선택하세요:")
-    color = st.color_picker("공 색상 선택", "#00ff00")  # 기본값: 녹색
-    
-    # HTML 색상 코드를 BGR로 변환
-    selected_color = tuple(int(color.lstrip('#')[i:i+2], 16) for i in (4, 2, 0))  # RGB to BGR
-    
-    if selected_color is not None:
-        b, g, r = selected_color
-        h, s, v = rgb_to_hsv(r, g, b)
-        color_tolerance = st.slider("색상 허용 범위", 0, 50, 20)
-        lower_color = np.array([max(0, h - color_tolerance), max(0, s - 50), max(0, v - 50)])
-        upper_color = np.array([min(179, h + color_tolerance), min(255, s + 50), min(255, v + 50)])
-    else:
-        st.error("색상을 선택하지 않았습니다. 기본 설정을 사용합니다.")
-        lower_color = np.array([35, 50, 50])  # 기본 초록색 범위
-        upper_color = np.array([85, 255, 255])
-
     # YOLOv4로 첫 번째 프레임에서 공 탐지
     bbox = detect_ball_with_yolo(first_frame)
     if bbox is None:
@@ -438,33 +335,34 @@ def process_video(video_path, initial_bbox, lower_color, upper_color, min_radius
         st.error("CSRT 트래커를 생성할 수 없습니다. 프로그램을 종료합니다.")
         return
 
-    tracker.init(first_frame, tuple(bbox))
+    try:
+        tracker.init(first_frame, tuple(bbox))
+    except Exception as e:
+        st.error(f"트래커 초기화 실패: {str(e)}")
+        return
 
     # 색상 선택 모드 추가
-    # global selected_color
-    # 색상 선택을 위한 Streamlit 위젯 사용
-    #st.image(first_frame, channels="BGR", use_column_width=True)
-    #clicked = st.button("이미지에서 색상 선택")
-    #if clicked:
-        # 기본 색상값 사용 또는 다른 방식으로 색상 선택
-        #selected_color = (0, 0, 255)  # 예시: 빨간색
+    global selected_color
+    window_name = "색상 선택용 화면"
+    cv2.namedWindow(window_name)
+    cv2.setMouseCallback(window_name, on_mouse_click, first_frame)
 
-    #st.write("비디오 화면에서 공의 색상을 선택하려면 클릭하세요.")
-    #while selected_color is None:
-        #cv2.imshow(window_name, first_frame)
-        #if cv2.waitKey(1) & 0xFF == 27:  # ESC 키를 누르면 루프 종료
-            #break
+    st.write("비디오 화면에서 공의 색상을 선택하려면 클릭하세요.")
+    while selected_color is None:
+        cv2.imshow(window_name, first_frame)
+        if cv2.waitKey(1) & 0xFF == 27:  # ESC 키를 누르면 루프 종료
+            break
 
-    #cv2.destroyWindow(window_name)
+    cv2.destroyWindow(window_name)
 
-    #if selected_color is not None:
-        #b, g, r = selected_color
-        #h, s, v = rgb_to_hsv(r, g, b)
-        #color_tolerance = st.slider("색상 허용 범위", 0, 50, 20)
-        #lower_color = np.array([max(0, h - color_tolerance), max(0, s - 50), max(0, v - 50)])
-        #upper_color = np.array([min(179, h + color_tolerance), min(255, s + 50), min(255, v + 50)])
-    #else:
-        #st.error("색상을 선택하지 않았습니다. 기본 설정을 사용합니다.")
+    if selected_color is not None:
+        b, g, r = selected_color
+        h, s, v = rgb_to_hsv(r, g, b)
+        color_tolerance = st.slider("색상 허용 범위", 0, 50, 20)
+        lower_color = np.array([max(0, h - color_tolerance), max(0, s - 50), max(0, v - 50)])
+        upper_color = np.array([min(179, h + color_tolerance), min(255, s + 50), min(255, v + 50)])
+    else:
+        st.error("색상을 선택하지 않았습니다. 기본 설정을 사용합니다.")
 
     # YOLOv4로 첫 번째 프레임에서 공 탐지
     bbox = detect_ball_with_yolo(first_frame)
@@ -557,36 +455,8 @@ def process_video(video_path, initial_bbox, lower_color, upper_color, min_radius
 
 # Streamlit UI
 st.title('개선된 공 추적 및 에너지 분석기')
-# 파일 다운로드 버튼
-if st.button("Download Required Files"):
-    for file_path, url in YOLO_FILES.items():
-        download_file(url, file_path)
-
-# YOLO 모델 파일 경로 설정
-cfg_path = "yolo/yolov4.cfg"
-weights_path = "yolo/yolov4.weights"
-names_path = "yolo/coco.names"
-
-# 파일 존재 여부 확인
-required_files = [cfg_path, weights_path, names_path]
-missing_files = [f for f in required_files if not os.path.exists(f)]
-
-if missing_files:
-    st.error("Required files are missing. Please click 'Download Required Files' button above.")
-    st.stop()
-
-# YOLOv4 모델 로드
-try:
-    net = cv2.dnn.readNet(weights_path, cfg_path)
-except Exception as e:
-    st.error(f"Error loading YOLO model: {str(e)}")
-    st.stop()
-
 
 print_opencv_info()
-
-if st.button("Download YOLOv4 weights"):
-    download_weights()
 
 uploaded_file = st.file_uploader("비디오 파일을 선택하세요.", type=['mp4', 'avi', 'mov'])
 
