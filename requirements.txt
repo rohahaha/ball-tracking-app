@@ -1,5 +1,5 @@
-opencv-python-headless
-numpy
-streamlit
-plotly
-scipy
+opencv-python-headless==4.7.0.72
+numpy==1.24.3
+streamlit==1.27.0
+plotly==5.17.0
+scipy==1.11.3
