@@ -13,63 +13,72 @@ import urllib.request
 # Streamlit UI 시작
 st.title('개선된 공 추적 및 에너지 분석기')
 
+st.info(f"OpenCV 버전: {cv2.__version__}")
+
 # YOLO 파일 경로 설정
-cfg_path = os.path.join("yolo", "yolov3.cfg")
-weights_path = os.path.join("yolo", "yolov3.weights")
-names_path = os.path.join("yolo", "coco.names")
+YOLO_DIR = "yolo"
+cfg_path = os.path.join(YOLO_DIR, "yolov3.cfg")
+weights_path = os.path.join(YOLO_DIR, "yolov3.weights")
+names_path = os.path.join(YOLO_DIR, "coco.names")
 
 # 파일 다운로드 함수
+@st.cache_data
 def download_yolo_files():
-    os.makedirs("yolo", exist_ok=True)
-    
-    # cfg 파일 다운로드
-    if not os.path.exists(cfg_path):
-        cfg_url = "https://raw.githubusercontent.com/pjreddie/darknet/master/cfg/yolov3.cfg"
-        st.info("Downloading YOLOv3 config file...")
-        urllib.request.urlretrieve(cfg_url, cfg_path)
-    
-    # names 파일 다운로드
-    if not os.path.exists(names_path):
-        names_url = "https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names"
-        st.info("Downloading COCO names file...")
-        urllib.request.urlretrieve(names_url, names_path)
-    
-    # weights 파일 다운로드
-    if not os.path.exists(weights_path):
-        weights_url = "https://pjreddie.com/media/files/yolov3.weights"
-        st.info("Downloading YOLOv3 weights file (this might take a while)...")
-        urllib.request.urlretrieve(weights_url, weights_path)
-    
-    st.success("All required files are downloaded!")
+    try:
+        os.makedirs(YOLO_DIR, exist_ok=True)
+        
+        files_to_download = {
+            cfg_path: "https://raw.githubusercontent.com/pjreddie/darknet/master/cfg/yolov3.cfg",
+            names_path: "https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names",
+            weights_path: "https://pjreddie.com/media/files/yolov3.weights"
+        }
+        
+        for file_path, url in files_to_download.items():
+            if not os.path.exists(file_path):
+                st.info(f"Downloading {os.path.basename(file_path)}...")
+                urllib.request.urlretrieve(url, file_path)
+                st.success(f"Downloaded {os.path.basename(file_path)}")
+        
+        return True
+    except Exception as e:
+        st.error(f"Error downloading files: {str(e)}")
+        return False
 
-# 파일 존재 여부 확인 및 다운로드
-if not all(os.path.exists(f) for f in [cfg_path, weights_path, names_path]):
-    st.warning("Required YOLO files are missing. Please click the button below to download them.")
-    if st.button("Download YOLO Files"):
-        try:
-            download_yolo_files()
-        except Exception as e:
-            st.error(f"Error downloading files: {str(e)}")
+# 파일 존재 여부 확인
+files_exist = all(os.path.exists(f) for f in [cfg_path, weights_path, names_path])
+
+if not files_exist:
+    st.warning("YOLO 모델 파일이 없습니다. 다운로드가 필요합니다.")
+    if st.button("YOLO 파일 다운로드"):
+        success = download_yolo_files()
+        if not success:
             st.stop()
     else:
         st.stop()
 
-# YOLO 모델 로드
-try:
-    net = cv2.dnn.readNet(weights_path, cfg_path)
-    st.success("YOLO model loaded successfully!")
-except Exception as e:
-    st.error(f"Error loading YOLO model: {str(e)}")
-    st.stop()
+# 로딩 스피너와 함께 모델 로드
+with st.spinner('YOLO 모델을 로드하는 중...'):
+    try:
+        net = cv2.dnn.readNet(weights_path, cfg_path)
+        st.success("YOLO 모델 로드 성공!")
+        
+        # 레이어 이름 가져오기
+        layer_names = net.getLayerNames()
+        output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers().flatten()]
+        
+        # COCO 클래스 로드
+        with open(names_path, "r") as f:
+            classes = [line.strip() for line in f.readlines()]
+            
+        st.success("모든 초기화가 완료되었습니다!")
+    except Exception as e:
+        st.error(f"모델 로드 중 오류 발생: {str(e)}")
+        st.error("자세한 오류 정보:")
+        st.code(traceback.format_exc())
+        st.stop()
 
-# COCO 클래스 파일 로드
-try:
-    with open(names_path, "r") as f:
-        classes = [line.strip() for line in f.readlines()]
-    st.success("COCO classes loaded successfully!")
-except Exception as e:
-    st.error(f"Error loading COCO classes: {str(e)}")
-    st.stop()
+# selected_color 초기화
+selected_color = None
 
 def download_weights():
     weights_path = "yolo/yolov4.weights"
