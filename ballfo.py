@@ -7,6 +7,7 @@ from scipy.signal import savgol_filter
 import colorsys
 import tempfile
 import os
+import gdown
 import traceback
 import urllib.request
 
@@ -18,55 +19,123 @@ st.title('공 추적 및 에너지 분석기')
 YOLO_DIR = "yolo"
 YOLO_FILES = {
     "yolov4.cfg": "https://raw.githubusercontent.com/AlexeyAB/darknet/master/cfg/yolov4.cfg",
-    "yolov4.weights": "https://github.com/AlexeyAB/darknet/releases/download/darknet_yolo_v3_optimal/yolov4.weights",
     "coco.names": "https://raw.githubusercontent.com/AlexeyAB/darknet/master/data/coco.names"
 }
+
+# 구글 드라이브 weights 파일 설정
+WEIGHTS_FILE_ID = "1XWTMChKOcrVpo-uaIldGp6bRzBfYIGqJ"
+WEIGHTS_FILENAME = "yolov4.weights"
 
 def download_yolo_files():
     """YOLO 모델 파일 다운로드"""
     try:
         os.makedirs(YOLO_DIR, exist_ok=True)
+        
+        # cfg와 names 파일 다운로드
         for filename, url in YOLO_FILES.items():
             filepath = os.path.join(YOLO_DIR, filename)
             if not os.path.exists(filepath):
-                st.info(f"Downloading {filename}...")
-                urllib.request.urlretrieve(url, filepath)
-                st.success(f"Downloaded {filename}")
+                with st.spinner(f"Downloading {filename}..."):
+                    try:
+                        urllib.request.urlretrieve(url, filepath)
+                        st.success(f"Downloaded {filename}")
+                    except Exception as e:
+                        st.error(f"Error downloading {filename}: {str(e)}")
+                        return False
+        
+        # weights 파일 다운로드
+        weights_path = os.path.join(YOLO_DIR, WEIGHTS_FILENAME)
+        if not os.path.exists(weights_path):
+            with st.spinner("Downloading YOLOv4 weights from Google Drive... This may take a few minutes..."):
+                try:
+                    output = gdown.download(
+                        f"https://drive.google.com/uc?id={WEIGHTS_FILE_ID}",
+                        weights_path,
+                        quiet=False
+                    )
+                    if output is not None and os.path.exists(weights_path):
+                        file_size = os.path.getsize(weights_path) / (1024 * 1024)  # Convert to MB
+                        if file_size > 1:  # Check if file size is reasonable
+                            st.success(f"Successfully downloaded YOLOv4 weights! (File size: {file_size:.1f} MB)")
+                        else:
+                            st.error("Downloaded weights file appears to be incomplete or corrupted.")
+                            if os.path.exists(weights_path):
+                                os.remove(weights_path)
+                            return False
+                    else:
+                        st.error("Failed to download weights file")
+                        return False
+                except Exception as e:
+                    st.error(f"Error downloading weights file: {str(e)}")
+                    if os.path.exists(weights_path):
+                        os.remove(weights_path)
+                    return False
+        else:
+            st.info("YOLOv4 weights file already exists.")
+        
         return True
+    
     except Exception as e:
-        st.error(f"Error downloading files: {str(e)}")
+        st.error(f"Error in download process: {str(e)}")
         return False
 
+def verify_yolo_files():
+    """YOLO 파일들의 존재 여부와 무결성 확인"""
+    required_files = {
+        "yolov4.cfg": 100 * 1024,  # 최소 100KB
+        "coco.names": 1024,        # 최소 1KB
+        "yolov4.weights": 200 * 1024 * 1024  # 최소 200MB
+    }
+    
+    for filename, min_size in required_files.items():
+        filepath = os.path.join(YOLO_DIR, filename)
+        if not os.path.exists(filepath):
+            st.warning(f"Missing required file: {filename}")
+            return False
+        if os.path.getsize(filepath) < min_size:
+            st.warning(f"File {filename} appears to be incomplete or corrupted")
+            return False
+    
+    return True
+
+# YOLO 초기화 함수 업데이트
 def initialize_yolo():
     """YOLO 모델 초기화"""
-    cfg_path = os.path.join(YOLO_DIR, "yolov4.cfg")
-    weights_path = os.path.join(YOLO_DIR, "yolov4.weights")
-    names_path = os.path.join(YOLO_DIR, "coco.names")
-
-    if not all(os.path.exists(f) for f in [cfg_path, weights_path, names_path]):
-        st.warning("YOLO 모델 파일이 없습니다. 다운로드가 필요합니다.")
+    if not verify_yolo_files():
+        st.warning("YOLO 모델 파일이 없거나 불완전합니다. 다운로드가 필요합니다.")
         if st.button("YOLO 파일 다운로드"):
             if not download_yolo_files():
+                st.error("파일 다운로드에 실패했습니다. 다시 시도해주세요.")
+                return None, None, None
+            if not verify_yolo_files():
+                st.error("다운로드된 파일이 올바르지 않습니다.")
                 return None, None, None
     
     try:
-        net = cv2.dnn.readNet(weights_path, cfg_path)
-        layer_names = net.getLayerNames()
-        unconnected_layers = net.getUnconnectedOutLayers()
+        weights_path = os.path.join(YOLO_DIR, WEIGHTS_FILENAME)
+        cfg_path = os.path.join(YOLO_DIR, "yolov4.cfg")
+        names_path = os.path.join(YOLO_DIR, "coco.names")
         
-        if isinstance(unconnected_layers, np.ndarray):
-            output_layers = [layer_names[i - 1] for i in unconnected_layers.flatten()]
-        elif isinstance(unconnected_layers, list):
-            output_layers = [layer_names[int(i[0]) - 1] if isinstance(i, (list, np.ndarray)) 
-                           else layer_names[int(i) - 1] for i in unconnected_layers]
-        else:
-            output_layers = [layer_names[int(unconnected_layers) - 1]]
-        
-        with open(names_path, "r") as f:
-            classes = [line.strip() for line in f.readlines()]
-        
-        return net, output_layers, classes
-        
+        with st.spinner("YOLO 모델을 로드하는 중..."):
+            net = cv2.dnn.readNet(weights_path, cfg_path)
+            
+            layer_names = net.getLayerNames()
+            unconnected_layers = net.getUnconnectedOutLayers()
+            
+            if isinstance(unconnected_layers, np.ndarray):
+                output_layers = [layer_names[i - 1] for i in unconnected_layers.flatten()]
+            elif isinstance(unconnected_layers, list):
+                output_layers = [layer_names[int(i[0]) - 1] if isinstance(i, (list, np.ndarray)) 
+                               else layer_names[int(i) - 1] for i in unconnected_layers]
+            else:
+                output_layers = [layer_names[int(unconnected_layers) - 1]]
+            
+            with open(names_path, "r") as f:
+                classes = [line.strip() for line in f.readlines()]
+            
+            st.success("YOLO 모델 로드 완료!")
+            return net, output_layers, classes
+            
     except Exception as e:
         st.error(f"YOLO 모델 초기화 오류: {str(e)}")
         return None, None, None
