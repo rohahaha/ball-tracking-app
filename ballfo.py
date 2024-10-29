@@ -10,25 +10,60 @@ import os
 import traceback
 import urllib.request
 
+# Streamlit UI 시작
+st.title('개선된 공 추적 및 에너지 분석기')
+
+# YOLO 파일 경로 설정
+cfg_path = os.path.join("yolo", "yolov4.cfg")
+weights_path = os.path.join("yolo", "yolov4.weights")
+names_path = os.path.join("yolo", "coco.names")
+
 # 파일 다운로드 함수
-def download_file(url, save_path):
-    try:
-        if not os.path.exists(os.path.dirname(save_path)):
-            os.makedirs(os.path.dirname(save_path))
-        if not os.path.exists(save_path):
-            st.info(f"Downloading {os.path.basename(save_path)}...")
-            urllib.request.urlretrieve(url, save_path)
-            st.success(f"Downloaded {os.path.basename(save_path)}")
-    except Exception as e:
-        st.error(f"Error downloading {save_path}: {str(e)}")
+def download_yolo_files():
+    os.makedirs("yolo", exist_ok=True)
+    
+    # cfg 파일 다운로드
+    if not os.path.exists(cfg_path):
+        cfg_url = "https://raw.githubusercontent.com/AlexeyAB/darknet/master/cfg/yolov4.cfg"
+        st.info("Downloading YOLOv4 config file...")
+        urllib.request.urlretrieve(cfg_url, cfg_path)
+    
+    # names 파일 다운로드
+    if not os.path.exists(names_path):
+        names_url = "https://raw.githubusercontent.com/AlexeyAB/darknet/master/data/coco.names"
+        st.info("Downloading COCO names file...")
+        urllib.request.urlretrieve(names_url, names_path)
+    
+    # weights 파일 다운로드
+    if not os.path.exists(weights_path):
+        weights_url = "https://drive.google.com/uc?export=download&id=1XWTMChKOcrVpo-uaIldGp6bRzBfYIGqJ"
+        st.info("Downloading YOLOv4 weights file (this might take a while)...")
+        urllib.request.urlretrieve(weights_url, weights_path)
+    
+    st.success("All required files are downloaded!")
+
+# 파일 존재 여부 확인 및 다운로드
+if not all(os.path.exists(f) for f in [cfg_path, weights_path, names_path]):
+    st.warning("Required YOLO files are missing. Downloading them now...")
+    if st.button("Download YOLO Files"):
+        try:
+            download_yolo_files()
+        except Exception as e:
+            st.error(f"Error downloading files: {str(e)}")
+            st.stop()
+    else:
         st.stop()
 
-# 필요한 파일 다운로드
-YOLO_FILES = {
-    "yolo/yolov4.cfg": "https://raw.githubusercontent.com/AlexeyAB/darknet/master/cfg/yolov4.cfg",
-    "yolo/coco.names": "https://raw.githubusercontent.com/AlexeyAB/darknet/master/data/coco.names",
-    "yolo/yolov4.weights": "https://drive.google.com/uc?export=download&id=1XWTMChKOcrVpo-uaIldGp6bRzBfYIGqJ"
-}
+# YOLO 모델 로드
+try:
+    net = cv2.dnn.readNet(weights_path, cfg_path)
+except Exception as e:
+    st.error(f"Error loading YOLO model: {str(e)}")
+    st.stop()
+
+# COCO 클래스 파일 로드
+with open(names_path, "r") as f:
+    classes = [line.strip() for line in f.readlines()]
 
 
 def download_weights():
