@@ -10,6 +10,27 @@ import os
 import traceback
 import urllib.request
 
+# 파일 다운로드 함수
+def download_file(url, save_path):
+    try:
+        if not os.path.exists(os.path.dirname(save_path)):
+            os.makedirs(os.path.dirname(save_path))
+        if not os.path.exists(save_path):
+            st.info(f"Downloading {os.path.basename(save_path)}...")
+            urllib.request.urlretrieve(url, save_path)
+            st.success(f"Downloaded {os.path.basename(save_path)}")
+    except Exception as e:
+        st.error(f"Error downloading {save_path}: {str(e)}")
+        st.stop()
+
+# 필요한 파일 다운로드
+YOLO_FILES = {
+    "yolo/yolov4.cfg": "https://raw.githubusercontent.com/AlexeyAB/darknet/master/cfg/yolov4.cfg",
+    "yolo/coco.names": "https://raw.githubusercontent.com/AlexeyAB/darknet/master/data/coco.names",
+    "yolo/yolov4.weights": "https://drive.google.com/uc?export=download&id=1XWTMChKOcrVpo-uaIldGp6bRzBfYIGqJ"
+}
+
+
 def download_weights():
     weights_path = "yolo/yolov4.weights"
     if not os.path.exists(weights_path):
@@ -487,6 +508,31 @@ def process_video(video_path, initial_bbox, lower_color, upper_color, min_radius
 
 # Streamlit UI
 st.title('개선된 공 추적 및 에너지 분석기')
+# 파일 다운로드 버튼
+if st.button("Download Required Files"):
+    for file_path, url in YOLO_FILES.items():
+        download_file(url, file_path)
+
+# YOLO 모델 파일 경로 설정
+cfg_path = "yolo/yolov4.cfg"
+weights_path = "yolo/yolov4.weights"
+names_path = "yolo/coco.names"
+
+# 파일 존재 여부 확인
+required_files = [cfg_path, weights_path, names_path]
+missing_files = [f for f in required_files if not os.path.exists(f)]
+
+if missing_files:
+    st.error("Required files are missing. Please click 'Download Required Files' button above.")
+    st.stop()
+
+# YOLOv4 모델 로드
+try:
+    net = cv2.dnn.readNet(weights_path, cfg_path)
+except Exception as e:
+    st.error(f"Error loading YOLO model: {str(e)}")
+    st.stop()
+
 
 print_opencv_info()
 
