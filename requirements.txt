@@ -3,4 +3,4 @@ opencv-python-headless==4.9.0.80
 numpy==1.26.3
 plotly==5.18.0
 scipy==1.12.0
-colorsys
+gdown==5.1.0
