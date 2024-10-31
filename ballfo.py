@@ -11,22 +11,7 @@ import gdown
 import traceback
 import urllib.request
 
-# Streamlit 페이지 설정
-st.set_page_config(page_title="공 추적 및 에너지 분석기", layout="wide")
-st.title('공 추적 및 에너지 분석기')
-
-# YOLO 파일 경로 및 URL 설정
-YOLO_DIR = "yolo"
-YOLO_FILES = {
-    "yolov4.cfg": "https://github.com/AlexeyAB/darknet/raw/master/cfg/yolov4.cfg",
-    "coco.names": "https://raw.githubusercontent.com/AlexeyAB/darknet/master/data/coco.names"
-}
-
-# 구글 드라이브 weights 파일 설정
-WEIGHTS_FILE_ID = "1XWTMChKOcrVpo-uaIldGp6bRzBfYIGqJ"
-WEIGHTS_FILENAME = "yolov4.weights"
-
-# 앱 안정성 향상을 위한 설정
+# Streamlit 페이지 설정 (반드시 다른 st 명령어보다 먼저 와야 함)
 st.set_page_config(
     page_title="공 추적 및 에너지 분석기",
     page_icon="🎾",
@@ -39,6 +24,9 @@ st.set_page_config(
     }
 )
 
+# 앱 제목
+st.title('공 추적 및 에너지 분석기')
+
 # 세션 상태 초기화
 if 'initialized' not in st.session_state:
     st.session_state.initialized = False
@@ -50,6 +38,17 @@ try:
         # 여기에 초기화 코드 추가
 except Exception as e:
     st.error(f"초기화 중 오류 발생: {str(e)}")
+
+# YOLO 파일 경로 및 URL 설정
+YOLO_DIR = "yolo"
+YOLO_FILES = {
+    "yolov4.cfg": "https://github.com/AlexeyAB/darknet/raw/master/cfg/yolov4.cfg",
+    "coco.names": "https://raw.githubusercontent.com/AlexeyAB/darknet/master/data/coco.names"
+}
+
+# 구글 드라이브 weights 파일 설정
+WEIGHTS_FILE_ID = "1XWTMChKOcrVpo-uaIldGp6bRzBfYIGqJ"
+WEIGHTS_FILENAME = "yolov4.weights"
 
 def create_yolov4_cfg():
     """YOLOv4 설정 파일 생성"""
