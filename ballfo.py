@@ -11,6 +11,31 @@ import gdown
 import traceback
 import urllib.request
 
+# 앱 안정성 향상을 위한 설정
+st.set_page_config(
+    page_title="공 추적 및 에너지 분석기",
+    page_icon="🎾",
+    layout="wide",
+    initial_sidebar_state="auto",
+    menu_items={
+        'Get Help': None,
+        'Report a bug': None,
+        'About': 'Ball Tracking and Energy Analysis Application'
+    }
+)
+
+# 세션 상태 초기화
+if 'initialized' not in st.session_state:
+    st.session_state.initialized = False
+
+# 전역 예외 처리
+try:
+    if not st.session_state.initialized:
+        st.session_state.initialized = True
+        # 여기에 초기화 코드 추가
+except Exception as e:
+    st.error(f"초기화 중 오류 발생: {str(e)}")
+
 # Streamlit 페이지 설정
 st.set_page_config(page_title="공 추적 및 에너지 분석기", layout="wide")
 st.title('공 추적 및 에너지 분석기')
