@@ -554,36 +554,40 @@ def download_yolo_files():
 def verify_yolo_files():
     """YOLO 파일들의 존재 여부와 무결성 확인"""
     required_files = {
-        "yolov4.cfg": 100 * 1024,  # 최소 100KB
-        "coco.names": 1024,        # 최소 1KB
+        "yolov4.cfg": 10 * 1024,     # 최소 10KB (수정됨)
+        "coco.names": 1024,          # 최소 1KB
         "yolov4.weights": 200 * 1024 * 1024  # 최소 200MB
     }
     
-    for filename, min_size in required_files.items():
-        filepath = os.path.join(YOLO_DIR, filename)
-        if not os.path.exists(filepath):
-            st.warning(f"Missing required file: {filename}")
-            return False
-        file_size = os.path.getsize(filepath)
-        if file_size < min_size:
-            st.warning(f"File {filename} appears to be incomplete (size: {file_size/1024:.1f}KB)")
-            try:
-                os.remove(filepath)
-            except Exception:
-                pass
-            return False
-    return True
+    try:
+        for filename, min_size in required_files.items():
+            filepath = os.path.join(YOLO_DIR, filename)
+            if not os.path.exists(filepath):
+                st.warning(f"Missing required file: {filename}")
+                return False
+            
+            file_size = os.path.getsize(filepath)
+            if file_size < min_size:
+                st.warning(f"File {filename} appears to be incomplete (size: {file_size/1024:.1f}KB, required: {min_size/1024:.1f}KB)")
+                return False
+            else:
+                st.success(f"Verified {filename} (size: {file_size/1024:.1f}KB)")
+        
+        return True
+    except Exception as e:
+        st.error(f"Error during file verification: {str(e)}")
+        return False
 
 def download_yolo_files():
     """YOLO 모델 파일 다운로드"""
     try:
         os.makedirs(YOLO_DIR, exist_ok=True)
         
-        # cfg 파일 생성
+        # YOLOv4 cfg 파일 다운로드
         if not os.path.exists(os.path.join(YOLO_DIR, "yolov4.cfg")):
+            st.info("Creating YOLOv4 configuration file...")
             if not save_yolov4_cfg():
                 return False
-            st.success("Created YOLOv4 configuration file")
         
         # coco.names 파일 다운로드
         names_path = os.path.join(YOLO_DIR, "coco.names")
@@ -607,8 +611,8 @@ def download_yolo_files():
                         quiet=False
                     )
                     if output is not None and os.path.exists(weights_path):
-                        file_size = os.path.getsize(weights_path) / (1024 * 1024)
-                        if file_size > 200:
+                        file_size = os.path.getsize(weights_path) / (1024 * 1024)  # MB로 변환
+                        if file_size > 200:  # 최소 200MB
                             st.success(f"Successfully downloaded YOLOv4 weights! (File size: {file_size:.1f} MB)")
                         else:
                             st.error("Downloaded weights file appears to be incomplete")
@@ -624,7 +628,9 @@ def download_yolo_files():
                         os.remove(weights_path)
                     return False
         
+        # 모든 파일 검증
         return verify_yolo_files()
+    
     except Exception as e:
         st.error(f"Error in download process: {str(e)}")
         return False
