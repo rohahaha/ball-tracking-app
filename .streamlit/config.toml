@@ -7,8 +7,6 @@ font = "sans serif"
 
 [server]
 maxUploadSize = 200
-enableXsrfProtection = true
-enableCORS = false
 
 [browser]
 gatherUsageStats = false
@@ -17,13 +15,7 @@ gatherUsageStats = false
 developmentMode = false
 
 [client]
-toolbarMode = "auto"
 showErrorDetails = true
 
 [logger]
 level = "info"
-messageFormat = "%(asctime)s %(message)s"
-
-[runner]
-# fastRerenderEnabled 옵션 제거됨
-magicEnabled = true
