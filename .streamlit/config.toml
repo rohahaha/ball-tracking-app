@@ -23,3 +23,7 @@ showErrorDetails = true
 [logger]
 level = "info"
 messageFormat = "%(asctime)s %(message)s"
+
+[runner]
+# fastRerenderEnabled 옵션 제거됨
+magicEnabled = true
