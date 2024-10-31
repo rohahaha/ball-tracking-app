@@ -20,10 +20,6 @@ developmentMode = false
 toolbarMode = "auto"
 showErrorDetails = true
 
-[runner]
-magicEnabled = true
-fastRerenderEnabled = true
-
 [logger]
 level = "info"
 messageFormat = "%(asctime)s %(message)s"
