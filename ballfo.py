@@ -18,13 +18,35 @@ st.title('공 추적 및 에너지 분석기')
 # YOLO 파일 경로 및 URL 설정
 YOLO_DIR = "yolo"
 YOLO_FILES = {
-    "yolov4.cfg": "https://raw.githubusercontent.com/AlexeyAB/darknet/master/cfg/yolov4.cfg",
+    "yolov4.cfg": "https://github.com/AlexeyAB/darknet/raw/master/cfg/yolov4.cfg",
     "coco.names": "https://raw.githubusercontent.com/AlexeyAB/darknet/master/data/coco.names"
 }
 
 # 구글 드라이브 weights 파일 설정
 WEIGHTS_FILE_ID = "1XWTMChKOcrVpo-uaIldGp6bRzBfYIGqJ"
 WEIGHTS_FILENAME = "yolov4.weights"
+
+def verify_yolo_files():
+    """YOLO 파일들의 존재 여부와 무결성 확인"""
+    required_files = {
+        "yolov4.cfg": 20 * 1024,    # 최소 20KB로 수정
+        "coco.names": 1024,         # 최소 1KB
+        "yolov4.weights": 200 * 1024 * 1024  # 최소 200MB
+    }
+    
+    for filename, min_size in required_files.items():
+        filepath = os.path.join(YOLO_DIR, filename)
+        if not os.path.exists(filepath):
+            st.warning(f"Missing required file: {filename}")
+            return False
+        file_size = os.path.getsize(filepath)
+        if file_size < min_size:
+            st.warning(f"File {filename} appears to be incomplete (size: {file_size/1024:.1f}KB)")
+            # 파일이 불완전한 경우 삭제
+            os.remove(filepath)
+            return False
+    
+    return True
 
 def download_yolo_files():
     """YOLO 모델 파일 다운로드"""
@@ -34,13 +56,23 @@ def download_yolo_files():
         # cfg와 names 파일 다운로드
         for filename, url in YOLO_FILES.items():
             filepath = os.path.join(YOLO_DIR, filename)
-            if not os.path.exists(filepath):
+            if not os.path.exists(filepath) or os.path.getsize(filepath) < 20 * 1024:  # 20KB 미만이면 재다운로드
                 with st.spinner(f"Downloading {filename}..."):
                     try:
-                        urllib.request.urlretrieve(url, filepath)
-                        st.success(f"Downloaded {filename}")
+                        response = urllib.request.urlopen(url)
+                        with open(filepath, 'wb') as f:
+                            f.write(response.read())
+                        if os.path.exists(filepath) and os.path.getsize(filepath) >= 20 * 1024:
+                            st.success(f"Downloaded {filename}")
+                        else:
+                            st.error(f"Downloaded {filename} appears to be incomplete")
+                            if os.path.exists(filepath):
+                                os.remove(filepath)
+                            return False
                     except Exception as e:
                         st.error(f"Error downloading {filename}: {str(e)}")
+                        if os.path.exists(filepath):
+                            os.remove(filepath)
                         return False
         
         # weights 파일 다운로드
@@ -55,10 +87,10 @@ def download_yolo_files():
                     )
                     if output is not None and os.path.exists(weights_path):
                         file_size = os.path.getsize(weights_path) / (1024 * 1024)  # Convert to MB
-                        if file_size > 1:  # Check if file size is reasonable
+                        if file_size > 200:  # 최소 200MB
                             st.success(f"Successfully downloaded YOLOv4 weights! (File size: {file_size:.1f} MB)")
                         else:
-                            st.error("Downloaded weights file appears to be incomplete or corrupted.")
+                            st.error("Downloaded weights file appears to be incomplete")
                             if os.path.exists(weights_path):
                                 os.remove(weights_path)
                             return False
@@ -70,15 +102,12 @@ def download_yolo_files():
                     if os.path.exists(weights_path):
                         os.remove(weights_path)
                     return False
-        else:
-            st.info("YOLOv4 weights file already exists.")
         
-        return True
+        return verify_yolo_files()
     
     except Exception as e:
         st.error(f"Error in download process: {str(e)}")
         return False
-
 def verify_yolo_files():
     """YOLO 파일들의 존재 여부와 무결성 확인"""
     required_files = {
