@@ -42,6 +42,7 @@ except Exception as e:
 # YOLO 파일 경로 설정 (URL은 제거하고 단순화)
 YOLO_DIR = "yolo"
 YOLO_FILES = {
+    "yolov4.cfg": "https://raw.githubusercontent.com/AlexeyAB/darknet/master/cfg/yolov4.cfg",
     "coco.names": "https://raw.githubusercontent.com/AlexeyAB/darknet/master/data/coco.names"
 }
 WEIGHTS_FILE_ID = "1XWTMChKOcrVpo-uaIldGp6bRzBfYIGqJ"
@@ -428,26 +429,67 @@ def save_yolov4_cfg():
         os.makedirs(YOLO_DIR, exist_ok=True)
         cfg_path = os.path.join(YOLO_DIR, "yolov4.cfg")
         
+        # 먼저 URL에서 직접 다운로드 시도
+        try:
+            st.info("Downloading YOLOv4 config from source...")
+            response = urllib.request.urlopen(YOLO_FILES["yolov4.cfg"])
+            cfg_content = response.read().decode('utf-8')
+            
+            with open(cfg_path, 'w', newline='\n') as f:
+                f.write(cfg_content)
+            
+            if os.path.exists(cfg_path):
+                file_size = os.path.getsize(cfg_path)
+                if file_size > 10 * 1024:  # 10KB 이상
+                    st.success(f"Downloaded YOLOv4 configuration file (size: {file_size/1024:.1f}KB)")
+                    return True
+                
+        except Exception as e:
+            st.warning(f"Failed to download config file: {str(e)}. Trying backup method...")
+        
+        # 다운로드 실패 시 백업 URL 시도
+        backup_url = "https://github.com/AlexeyAB/darknet/raw/master/cfg/yolov4.cfg"
+        try:
+            st.info("Trying backup source for YOLOv4 config...")
+            response = urllib.request.urlopen(backup_url)
+            cfg_content = response.read().decode('utf-8')
+            
+            with open(cfg_path, 'w', newline='\n') as f:
+                f.write(cfg_content)
+            
+            if os.path.exists(cfg_path):
+                file_size = os.path.getsize(cfg_path)
+                if file_size > 10 * 1024:  # 10KB 이상
+                    st.success(f"Downloaded YOLOv4 configuration file from backup (size: {file_size/1024:.1f}KB)")
+                    return True
+                
+        except Exception as e:
+            st.warning(f"Failed to download from backup: {str(e)}. Using local template...")
+        
+        # 모든 다운로드 실패 시 로컬 템플릿 사용
         cfg_content = create_yolov4_cfg()
-        with open(cfg_path, 'w', newline='\n') as f:  # 명시적으로 개행 문자 지정
+        with open(cfg_path, 'w', newline='\n') as f:
             f.write(cfg_content)
         
-        # 파일 검증
         if os.path.exists(cfg_path):
             file_size = os.path.getsize(cfg_path)
-            if file_size > 20 * 1024:  # 20KB 이상
-                st.success(f"Created YOLOv4 configuration file (size: {file_size/1024:.1f}KB)")
+            if file_size > 10 * 1024:  # 10KB 이상
+                st.success(f"Created YOLOv4 configuration file using template (size: {file_size/1024:.1f}KB)")
                 return True
             else:
                 st.error(f"Created file is too small: {file_size/1024:.1f}KB")
+                if os.path.exists(cfg_path):
+                    os.remove(cfg_path)
+                return False
         
         st.error("Failed to create valid YOLOv4 configuration file")
         if os.path.exists(cfg_path):
             os.remove(cfg_path)
         return False
+        
     except Exception as e:
-        st.error(f"Error creating YOLOv4 configuration file: {str(e)}")
-        if os.path.exists(cfg_path):
+        st.error(f"Error handling YOLOv4 configuration file: {str(e)}")
+        if 'cfg_path' in locals() and os.path.exists(cfg_path):
             os.remove(cfg_path)
         return False
 
