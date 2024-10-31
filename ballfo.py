@@ -47,6 +47,1226 @@ YOLO_FILES = {
 WEIGHTS_FILE_ID = "1XWTMChKOcrVpo-uaIldGp6bRzBfYIGqJ"
 WEIGHTS_FILENAME = "yolov4.weights"
 
+def create_yolov4_cfg():
+    """YOLOv4 설정 파일 생성"""
+    cfg_content = """[net]
+# Testing
+#batch=1
+#subdivisions=1
+# Training
+batch=64
+subdivisions=16
+width=608
+height=608
+channels=3
+momentum=0.949
+decay=0.0005
+angle=0
+saturation = 1.5
+exposure = 1.5
+hue=.1
+
+learning_rate=0.00261
+burn_in=1000
+max_batches = 500500
+policy=steps
+steps=400000,450000
+scales=.1,.1
+
+#cutmix=1
+mosaic=1
+
+#:104x104 54:52x52 85:26x26 104:13x13 for 416
+
+[convolutional]
+batch_normalize=1
+filters=32
+size=3
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=64
+size=3
+stride=2
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=64
+size=1
+stride=1
+pad=1
+activation=mish
+
+[route]
+layers = -2
+
+[convolutional]
+batch_normalize=1
+filters=64
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=32
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=64
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=64
+size=1
+stride=1
+pad=1
+activation=mish
+
+[route]
+layers = -1,-7
+
+[convolutional]
+batch_normalize=1
+filters=64
+size=1
+stride=1
+pad=1
+activation=mish
+
+# Downsample
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=3
+stride=2
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=64
+size=1
+stride=1
+pad=1
+activation=mish
+
+[route]
+layers = -2
+
+[convolutional]
+batch_normalize=1
+filters=64
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=64
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=64
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=64
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=64
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=64
+size=1
+stride=1
+pad=1
+activation=mish
+
+[route]
+layers = -1,-10
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=1
+stride=1
+pad=1
+activation=mish
+
+# Downsample
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=3
+stride=2
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=1
+stride=1
+pad=1
+activation=mish
+
+[route]
+layers = -2
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=1
+stride=1
+pad=1
+activation=mish
+
+[route]
+layers = -1,-28
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=1
+stride=1
+pad=1
+activation=mish
+
+# Downsample
+
+[convolutional]
+batch_normalize=1
+filters=512
+size=3
+stride=2
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=1
+stride=1
+pad=1
+activation=mish
+
+[route]
+layers = -2
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=1
+stride=1
+pad=1
+activation=mish
+
+[route]
+layers = -1,-28
+
+[convolutional]
+batch_normalize=1
+filters=512
+size=1
+stride=1
+pad=1
+activation=mish
+
+# Downsample
+
+[convolutional]
+batch_normalize=1
+filters=1024
+size=3
+stride=2
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=512
+size=1
+stride=1
+pad=1
+activation=mish
+
+[route]
+layers = -2
+
+[convolutional]
+batch_normalize=1
+filters=512
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=512
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=512
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=512
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=512
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=512
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=512
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=512
+size=1
+stride=1
+pad=1
+activation=mish
+
+[convolutional]
+batch_normalize=1
+filters=512
+size=3
+stride=1
+pad=1
+activation=mish
+
+[shortcut]
+from=-3
+activation=linear
+
+[convolutional]
+batch_normalize=1
+filters=512
+size=1
+stride=1
+pad=1
+activation=mish
+
+[route]
+layers = -1,-16
+
+[convolutional]
+batch_normalize=1
+filters=1024
+size=1
+stride=1
+pad=1
+activation=mish
+stopbackward=800
+
+##########################
+
+[convolutional]
+batch_normalize=1
+filters=512
+size=1
+stride=1
+pad=1
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+size=3
+stride=1
+pad=1
+filters=1024
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+filters=512
+size=1
+stride=1
+pad=1
+activation=leaky
+
+### SPP ###
+[maxpool]
+stride=1
+size=5
+
+[route]
+layers=-2
+
+[maxpool]
+stride=1
+size=9
+
+[route]
+layers=-4
+
+[maxpool]
+stride=1
+size=13
+
+[route]
+layers=-1,-3,-5,-6
+### End SPP ###
+
+[convolutional]
+batch_normalize=1
+filters=512
+size=1
+stride=1
+pad=1
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+size=3
+stride=1
+pad=1
+filters=1024
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+filters=512
+size=1
+stride=1
+pad=1
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=1
+stride=1
+pad=1
+activation=leaky
+
+[upsample]
+stride=2
+
+[route]
+layers = 85
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=1
+stride=1
+pad=1
+activation=leaky
+
+[route]
+layers = -1, -3
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=1
+stride=1
+pad=1
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+size=3
+stride=1
+pad=1
+filters=512
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=1
+stride=1
+pad=1
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+size=3
+stride=1
+pad=1
+filters=512
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=1
+stride=1
+pad=1
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=1
+stride=1
+pad=1
+activation=leaky
+
+[upsample]
+stride=2
+
+[route]
+layers = 54
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=1
+stride=1
+pad=1
+activation=leaky
+
+[route]
+layers = -1, -3
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=1
+stride=1
+pad=1
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+size=3
+stride=1
+pad=1
+filters=256
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=1
+stride=1
+pad=1
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+size=3
+stride=1
+pad=1
+filters=256
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+filters=128
+size=1
+stride=1
+pad=1
+activation=leaky
+
+##########################
+
+[convolutional]
+batch_normalize=1
+size=3
+stride=1
+pad=1
+filters=256
+activation=leaky
+
+[convolutional]
+size=1
+stride=1
+pad=1
+filters=255
+activation=linear
+
+
+[yolo]
+mask = 0,1,2
+anchors = 12, 16, 19, 36, 40, 28, 36, 75, 76, 55, 72, 146, 142, 110, 192, 243, 459, 401
+classes=80
+num=9
+jitter=.3
+ignore_thresh = .7
+truth_thresh = 1
+scale_x_y = 1.2
+iou_thresh=0.213
+    nms_kind=greedynms
+    beta_nms=0.6
+    max_delta=5
+
+[route]
+layers = -4
+
+[convolutional]
+batch_normalize=1
+size=3
+stride=2
+pad=1
+filters=256
+activation=leaky
+
+[route]
+layers = -1, -16
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=1
+stride=1
+pad=1
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+size=3
+stride=1
+pad=1
+filters=512
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=1
+stride=1
+pad=1
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+size=3
+stride=1
+pad=1
+filters=512
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+filters=256
+size=1
+stride=1
+pad=1
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+size=3
+stride=1
+pad=1
+filters=512
+activation=leaky
+
+[convolutional]
+size=1
+stride=1
+pad=1
+filters=255
+activation=linear
+
+[yolo]
+mask = 3,4,5
+anchors = 12, 16, 19, 36, 40, 28, 36, 75, 76, 55, 72, 146, 142, 110, 192, 243, 459, 401
+classes=80
+num=9
+jitter=.3
+ignore_thresh = .7
+truth_thresh = 1
+scale_x_y = 1.1
+iou_thresh=0.213
+nms_kind=greedynms
+beta_nms=0.6
+max_delta=5
+
+[route]
+layers = -4
+
+[convolutional]
+batch_normalize=1
+size=3
+stride=2
+pad=1
+filters=512
+activation=leaky
+
+[route]
+layers = -1, -37
+
+[convolutional]
+batch_normalize=1
+filters=512
+size=1
+stride=1
+pad=1
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+size=3
+stride=1
+pad=1
+filters=1024
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+filters=512
+size=1
+stride=1
+pad=1
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+size=3
+stride=1
+pad=1
+filters=1024
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+filters=512
+size=1
+stride=1
+pad=1
+activation=leaky
+
+[convolutional]
+batch_normalize=1
+size=3
+stride=1
+pad=1
+filters=1024
+activation=leaky
+
+[convolutional]
+size=1
+stride=1
+pad=1
+filters=255
+activation=linear
+
+[yolo]
+mask = 6,7,8
+anchors = 12, 16, 19, 36, 40, 28, 36, 75, 76, 55, 72, 146, 142, 110, 192, 243, 459, 401
+classes=80
+num=9
+jitter=.3
+ignore_thresh = .7
+truth_thresh = 1
+scale_x_y = 1.05
+iou_thresh=0.213
+nms_kind=greedynms
+beta_nms=0.6
+max_delta=5"""
+
+    return cfg_content
+
+def save_yolov4_cfg():
+    """YOLOv4 설정 파일 저장"""
+    try:
+        os.makedirs(YOLO_DIR, exist_ok=True)
+        cfg_path = os.path.join(YOLO_DIR, "yolov4.cfg")
+        
+        cfg_content = create_yolov4_cfg()
+        with open(cfg_path, 'w') as f:
+            f.write(cfg_content)
+        
+        if os.path.exists(cfg_path) and os.path.getsize(cfg_path) > 20 * 1024:  # 최소 20KB
+            return True
+        else:
+            st.error("Failed to create valid YOLOv4 configuration file")
+            if os.path.exists(cfg_path):
+                os.remove(cfg_path)
+            return False
+    except Exception as e:
+        st.error(f"Error creating YOLOv4 configuration file: {str(e)}")
+        return False
+
+# YOLO 파일 다운로드 함수 수정
+def download_yolo_files():
+    """YOLO 모델 파일 다운로드"""
+    try:
+        os.makedirs(YOLO_DIR, exist_ok=True)
+        
+        # YOLOv4 cfg 파일 생성
+        if not os.path.exists(os.path.join(YOLO_DIR, "yolov4.cfg")):
+            st.info("Creating YOLOv4 configuration file...")
+            if not save_yolov4_cfg():
+                return False
+            st.success("Created YOLOv4 configuration file")
+        
+        # coco.names 파일 다운로드
+        names_path = os.path.join(YOLO_DIR, "coco.names")
+        if not os.path.exists(names_path):
+            st.info("Downloading coco.names...")
+            try:
+                urllib.request.urlretrieve(YOLO_FILES["coco.names"], names_path)
+                st.success("Downloaded coco.names")
+            except Exception as e:
+                st.error(f"Error downloading coco.names: {str(e)}")
+                return False
+        
+        # weights 파일 다운로드
+        weights_path = os.path.join(YOLO_DIR, WEIGHTS_FILENAME)
+        if not os.path.exists(weights_path):
+            with st.spinner("Downloading YOLOv4 weights from Google Drive... This may take a few minutes..."):
+                try:
+                    output = gdown.download(
+                        f"https://drive.google.com/uc?id={WEIGHTS_FILE_ID}",
+                        weights_path,
+                        quiet=False
+                    )
+                    if output is not None and os.path.exists(weights_path):
+                        file_size = os.path.getsize(weights_path) / (1024 * 1024)  # MB로 변환
+                        if file_size > 200:  # 최소 200MB
+                            st.success(f"Successfully downloaded YOLOv4 weights! (File size: {file_size:.1f} MB)")
+                        else:
+                            st.error("Downloaded weights file appears to be incomplete")
+                            if os.path.exists(weights_path):
+                                os.remove(weights_path)
+                            return False
+                    else:
+                        st.error("Failed to download weights file")
+                        return False
+                except Exception as e:
+                    st.error(f"Error downloading weights file: {str(e)}")
+                    if os.path.exists(weights_path):
+                        os.remove(weights_path)
+                    return False
+        
+        return verify_yolo_files()
+    
+    except Exception as e:
+        st.error(f"Error in download process: {str(e)}")
+        return False
+
 def verify_yolo_files():
     """YOLO 파일들의 존재 여부와 무결성 확인"""
     required_files = {
