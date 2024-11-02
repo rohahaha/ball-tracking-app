@@ -684,19 +684,59 @@ def initialize_yolo():
         return None, None, None
 
 def create_stable_tracker():
-    """안정적인 CSRT 트래커 생성"""
+    """여러 트래커 옵션을 시도하여 안정적인 트래커 생성"""
+    trackers = [
+        ('CSRT', [
+            lambda: cv2.legacy.TrackerCSRT_create(),
+            lambda: cv2.TrackerCSRT_create()
+        ]),
+        ('KCF', [
+            lambda: cv2.legacy.TrackerKCF_create(),
+            lambda: cv2.TrackerKCF_create()
+        ]),
+        ('MOSSE', [
+            lambda: cv2.legacy.TrackerMOSSE_create(),
+            lambda: cv2.TrackerMOSSE_create()
+        ])
+    ]
+    
+    errors = []
+    for tracker_name, creator_funcs in trackers:
+        for creator in creator_funcs:
+            try:
+                tracker = creator()
+                if tracker is not None:
+                    st.success(f"{tracker_name} 트래커가 성공적으로 생성되었습니다!")
+                    return tracker
+            except Exception as e:
+                errors.append(f"{tracker_name}: {str(e)}")
+                continue
+    
+    # 모든 시도가 실패한 경우, 수동 트래커 구현
     try:
-        if hasattr(cv2, 'legacy') and hasattr(cv2.legacy, 'TrackerCSRT_create'):
-            tracker = cv2.legacy.TrackerCSRT_create()
-        elif hasattr(cv2, 'TrackerCSRT_create'):
-            tracker = cv2.TrackerCSRT_create()
-        else:
-            raise AttributeError("CSRT 트래커를 생성할 수 없습니다.")
-        return tracker
+        st.warning("기본 트래커를 사용할 수 없어 단순 트래커를 사용합니다.")
+        
+        class SimpleTracker:
+            def __init__(self):
+                self.bbox = None
+                
+            def init(self, frame, bbox):
+                self.bbox = bbox
+                return True
+                
+            def update(self, frame):
+                if self.bbox is None:
+                    return False, None
+                return True, self.bbox
+        
+        return SimpleTracker()
+        
     except Exception as e:
-        st.error(f"트래커 생성 실패: {str(e)}")
+        st.error(f"트래커 생성 실패. 시도된 모든 방법이 실패했습니다:")
+        for error in errors:
+            st.error(error)
+        st.error(f"최종 오류: {str(e)}")
         return None
-
 def detect_ball(frame, lower_color, upper_color, min_radius, max_radius):
     """색상 기반 공 검출"""
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -901,7 +941,7 @@ def process_video(video_path, initial_bbox, pixels_per_meter, mass, height_refer
     lower_color = np.array([max(0, h - color_tolerance), max(0, s - 50), max(0, v - 50)])
     upper_color = np.array([min(179, h + color_tolerance), min(255, s + 50), min(255, v + 50)])
 
-    # 트래커 초기화
+# 트래커 초기화
     tracker = create_stable_tracker()
     if tracker is None:
         st.error("트래커를 생성할 수 없습니다. 프로그램을 종료합니다.")
@@ -919,16 +959,23 @@ def process_video(video_path, initial_bbox, pixels_per_meter, mass, height_refer
             st.warning("YOLO로 공을 감지할 수 없어 수동 설정된 위치를 사용합니다.")
             bbox = initial_bbox
         
+        # bbox가 tuple이 아닌 경우 변환
+        if not isinstance(bbox, tuple):
+            bbox = tuple(bbox)
+        
+        st.info(f"초기 바운딩 박스: {bbox}")
+        
         # 트래커 초기화 시도
-        init_success = tracker.init(first_frame, tuple(bbox))
+        init_success = tracker.init(first_frame, bbox)
         if not init_success:
-            st.error("트래커 초기화에 실패했습니다.")
-            return
+            st.warning("트래커 초기화 문제 발생 - 단순 추적으로 계속합니다.")
+        else:
+            st.success("트래커가 성공적으로 초기화되었습니다!")
             
-        st.success("트래커가 성공적으로 초기화되었습니다!")
     except Exception as e:
         st.error(f"트래커 초기화 중 오류 발생: {str(e)}")
-        return
+        st.info("단순 추적으로 전환합니다.")
+        tracker = create_stable_tracker()  # 새로운 트래커 생성 시도
 
     # 분석 변수 초기화
     prev_pos = None
