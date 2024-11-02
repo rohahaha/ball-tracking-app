@@ -684,59 +684,76 @@ def initialize_yolo():
         return None, None, None
 
 def create_stable_tracker():
-    """여러 트래커 옵션을 시도하여 안정적인 트래커 생성"""
-    trackers = [
-        ('CSRT', [
-            lambda: cv2.legacy.TrackerCSRT_create(),
-            lambda: cv2.TrackerCSRT_create()
-        ]),
-        ('KCF', [
-            lambda: cv2.legacy.TrackerKCF_create(),
-            lambda: cv2.TrackerKCF_create()
-        ]),
-        ('MOSSE', [
-            lambda: cv2.legacy.TrackerMOSSE_create(),
-            lambda: cv2.TrackerMOSSE_create()
-        ])
-    ]
-    
-    errors = []
-    for tracker_name, creator_funcs in trackers:
-        for creator in creator_funcs:
-            try:
-                tracker = creator()
-                if tracker is not None:
-                    st.success(f"{tracker_name} 트래커가 성공적으로 생성되었습니다!")
-                    return tracker
-            except Exception as e:
-                errors.append(f"{tracker_name}: {str(e)}")
-                continue
-    
-    # 모든 시도가 실패한 경우, 수동 트래커 구현
+    """단순화된 트래커 생성"""
     try:
-        st.warning("기본 트래커를 사용할 수 없어 단순 트래커를 사용합니다.")
-        
         class SimpleTracker:
             def __init__(self):
                 self.bbox = None
+                self.last_center = None
                 
             def init(self, frame, bbox):
-                self.bbox = bbox
+                self.bbox = tuple(map(int, bbox))
+                self.last_center = (
+                    int(bbox[0] + bbox[2]/2),
+                    int(bbox[1] + bbox[3]/2)
+                )
                 return True
                 
             def update(self, frame):
                 if self.bbox is None:
                     return False, None
+                
+                # HSV 색상 기반 추적 시도
+                try:
+                    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+                    x, y, w, h = self.bbox
+                    
+                    # 현재 박스 영역의 HSV 평균값 계산
+                    roi = hsv[y:y+h, x:x+w]
+                    avg_hue = np.mean(roi[:,:,0])
+                    
+                    # HSV 범위 설정
+                    lower = np.array([max(0, avg_hue-10), 50, 50])
+                    upper = np.array([min(180, avg_hue+10), 255, 255])
+                    
+                    # 마스크 생성
+                    mask = cv2.inRange(hsv, lower, upper)
+                    mask = cv2.erode(mask, None, iterations=2)
+                    mask = cv2.dilate(mask, None, iterations=2)
+                    
+                    # 컨투어 찾기
+                    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    
+                    if contours:
+                        c = max(contours, key=cv2.contourArea)
+                        ((x, y), radius) = cv2.minEnclosingCircle(c)
+                        M = cv2.moments(c)
+                        
+                        if M["m00"] != 0:
+                            center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+                            self.last_center = center
+                            self.bbox = (
+                                int(center[0] - self.bbox[2]/2),
+                                int(center[1] - self.bbox[3]/2),
+                                self.bbox[2],
+                                self.bbox[3]
+                            )
+                            return True, self.bbox
+                            
+                except Exception:
+                    pass
+                
+                # 추적 실패 시 이전 위치 반환
                 return True, self.bbox
         
-        return SimpleTracker()
+        tracker = SimpleTracker()
+        st.success("단순 트래커가 성공적으로 생성되었습니다.")
+        return tracker
         
     except Exception as e:
-        st.error(f"트래커 생성 실패. 시도된 모든 방법이 실패했습니다:")
-        for error in errors:
-            st.error(error)
-        st.error(f"최종 오류: {str(e)}")
+        st.error(f"트래커 생성 실패: {str(e)}")
         return None
+        
 def detect_ball(frame, lower_color, upper_color, min_radius, max_radius):
     """색상 기반 공 검출"""
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
