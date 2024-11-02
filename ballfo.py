@@ -981,9 +981,8 @@ def detect_ball_with_yolo(frame, net, output_layers, classes):
         net.setInput(blob)
         outs = net.forward(output_layers)
 
-        class_ids = []
-        confidences = []
-        boxes = []
+        best_confidence = 0
+        best_box = None
 
         for out in outs:
             for detection in out:
@@ -991,26 +990,36 @@ def detect_ball_with_yolo(frame, net, output_layers, classes):
                 class_id = np.argmax(scores)
                 confidence = scores[class_id]
 
-                if classes[class_id] == "sports ball" and confidence > 0.5:
-                    center_x = int(detection[0] * width)
-                    center_y = int(detection[1] * height)
-                    w = int(detection[2] * width)
-                    h = int(detection[3] * height)
+                if confidence > 0.5:  # 기준값 수정 가능
+                    try:
+                        class_name = classes[class_id]
+                        if class_name == "sports ball" and confidence > best_confidence:
+                            center_x = int(detection[0] * width)
+                            center_y = int(detection[1] * height)
+                            w = int(detection[2] * width)
+                            h = int(detection[3] * height)
 
-                    x = int(center_x - w / 2)
-                    y = int(center_y - h / 2)
+                            x = int(center_x - w / 2)
+                            y = int(center_y - h / 2)
+                            
+                            # 범위 검사 추가
+                            x = max(0, min(x, width - w))
+                            y = max(0, min(y, height - h))
+                            w = min(w, width - x)
+                            h = min(h, height - y)
 
-                    boxes.append([x, y, w, h])
-                    confidences.append(float(confidence))
-                    class_ids.append(class_id)
+                            best_box = (x, y, w, h)
+                            best_confidence = confidence
+                    except IndexError:
+                        continue
 
-        if boxes:
-            indexes = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
-            if len(indexes) > 0:
-                i = indexes[0] if isinstance(indexes[0], int) else indexes[0][0]
-                return tuple(boxes[i])
-        return None
-        
+        if best_box is not None:
+            st.success(f"공이 감지되었습니다. (신뢰도: {best_confidence:.2f})")
+            return best_box
+        else:
+            st.warning("공을 감지하지 못했습니다.")
+            return None
+            
     except Exception as e:
         st.error(f"공 검출 중 오류 발생: {str(e)}")
         return None
