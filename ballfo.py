@@ -864,31 +864,44 @@ def update_charts(frames, speeds, ke, pe, me, speed_chart, energy_chart, frame_c
 
 def select_color_from_image(frame):
     """이미지에서 클릭으로 색상 선택"""
-    st.write("아래 이미지에서 추적하고 싶은 공의 색상을 클릭하세요.")
+    st.write("아래 이미지를 마우스로 클릭하여 공의 색상을 선택하세요.")
     
-    # 클릭한 위치의 색상을 저장할 상태 변수
+    # 이미지 크기 가져오기
+    height, width = frame.shape[:2]
+    
+    # 클릭 위치 저장을 위한 세션 상태
+    if 'click_x' not in st.session_state:
+        st.session_state.click_x = width // 2
+    if 'click_y' not in st.session_state:
+        st.session_state.click_y = height // 2
     if 'selected_color' not in st.session_state:
         st.session_state.selected_color = None
-    if 'click_coordinates' not in st.session_state:
-        st.session_state.click_coordinates = None
 
-    # 이미지 표시 및 클릭 이벤트 처리
+    # 이미지를 Canvas로 표시
     col1, col2 = st.columns([3, 1])
     
     with col1:
-        # 이미지 클릭 처리
-        clicked = st.image(frame, channels="BGR", use_column_width=True)
+        # Canvas 설정
+        from streamlit_image_coordinates import streamlit_image_coordinates
         
-        # 마우스 클릭 위치 입력을 위한 슬라이더
-        img_height, img_width = frame.shape[:2]
-        x = st.slider("X 좌표", 0, img_width-1, img_width//2)
-        y = st.slider("Y 좌표", 0, img_height-1, img_height//2)
+        clicked_coords = streamlit_image_coordinates(
+            frame,
+            key="color_picker"
+        )
         
-        if st.button("이 위치의 색상 선택"):
-            # BGR 형식의 색상 가져오기
-            selected_color = frame[y, x]
-            st.session_state.selected_color = selected_color
-            st.session_state.click_coordinates = (x, y)
+        if clicked_coords:
+            # 클릭 좌표 업데이트
+            st.session_state.click_x = clicked_coords["x"]
+            st.session_state.click_y = clicked_coords["y"]
+            
+            # 선택한 좌표의 색상 저장
+            x, y = st.session_state.click_x, st.session_state.click_y
+            st.session_state.selected_color = frame[y, x]
+            
+            # 프레임 업데이트
+            frame_with_click = frame.copy()
+            cv2.circle(frame_with_click, (x, y), 5, (0, 255, 0), -1)
+            st.image(frame_with_click, channels="BGR", use_column_width=True)
     
     with col2:
         if st.session_state.selected_color is not None:
@@ -912,8 +925,10 @@ def select_color_from_image(frame):
             mask_preview = cv2.bitwise_and(frame, frame, mask=mask)
             st.image(mask_preview, channels="BGR", caption="마스크 미리보기")
             
-            return (b, g, r), lower_color, upper_color, (x, y)
-            
+            # 선택 확인 버튼
+            if st.button("이 색상으로 선택"):
+                return (b, g, r), lower_color, upper_color, (st.session_state.click_x, st.session_state.click_y)
+    
     return None, None, None, None
 
 def process_uploaded_video(uploaded_file, net, output_layers, classes):
