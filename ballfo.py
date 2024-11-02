@@ -1000,8 +1000,8 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
     else:
         st.error("Failed to read the first frame of the video.")
 
-def process_video(video_path, initial_bbox, pixels_per_meter, mass, height_reference, net, output_layers, classes, lower_color, upper_color):    """비디오 처리 및 분석"""
-     """비디오 처리 및 분석"""
+def process_video(video_path, initial_bbox, pixels_per_meter, mass, height_reference, net, output_layers, classes, lower_color, upper_color):
+    """비디오 처리 및 분석"""
     video = cv2.VideoCapture(video_path)
     fps = video.get(cv2.CAP_PROP_FPS)
     width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -1010,6 +1010,7 @@ def process_video(video_path, initial_bbox, pixels_per_meter, mass, height_refer
     # 트래커 초기화
     tracker = create_stable_tracker()
     if tracker is None:
+        st.error("트래커를 생성할 수 없습니다. 프로그램을 종료합니다.")
         return
 
     # YOLO로 첫 프레임에서 공 탐지
@@ -1017,6 +1018,7 @@ def process_video(video_path, initial_bbox, pixels_per_meter, mass, height_refer
     if not ret:
         st.error("비디오 첫 프레임을 읽을 수 없습니다.")
         return
+
     try:
         bbox = detect_ball_with_yolo(first_frame, net, output_layers, classes)
         if bbox is None:
