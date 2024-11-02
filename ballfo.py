@@ -904,6 +904,7 @@ def process_video(video_path, initial_bbox, pixels_per_meter, mass, height_refer
     # 트래커 초기화
     tracker = create_stable_tracker()
     if tracker is None:
+        st.error("트래커를 생성할 수 없습니다. 프로그램을 종료합니다.")
         return
 
     # YOLO로 첫 프레임에서 공 탐지
@@ -912,11 +913,22 @@ def process_video(video_path, initial_bbox, pixels_per_meter, mass, height_refer
         st.error("비디오 첫 프레임을 읽을 수 없습니다.")
         return
 
-    bbox = detect_ball_with_yolo(first_frame, net, output_layers, classes)
-    if bbox is None:
-        bbox = initial_bbox
-    
-    tracker.init(first_frame, tuple(bbox))
+    try:
+        bbox = detect_ball_with_yolo(first_frame, net, output_layers, classes)
+        if bbox is None:
+            st.warning("YOLO로 공을 감지할 수 없어 수동 설정된 위치를 사용합니다.")
+            bbox = initial_bbox
+        
+        # 트래커 초기화 시도
+        init_success = tracker.init(first_frame, tuple(bbox))
+        if not init_success:
+            st.error("트래커 초기화에 실패했습니다.")
+            return
+            
+        st.success("트래커가 성공적으로 초기화되었습니다!")
+    except Exception as e:
+        st.error(f"트래커 초기화 중 오류 발생: {str(e)}")
+        return
 
     # 분석 변수 초기화
     prev_pos = None
