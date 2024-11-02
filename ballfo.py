@@ -866,10 +866,11 @@ def select_color_from_image(frame):
     """이미지에서 클릭으로 색상 선택"""
     st.write("아래 이미지를 마우스로 클릭하여 공의 색상을 선택하세요.")
     
-    # 이미지 크기 가져오기
+    # BGR에서 RGB로 변환 (Streamlit 표시용)
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     height, width = frame.shape[:2]
     
-    # 클릭 위치 저장을 위한 세션 상태
+    # 세션 상태 초기화
     if 'click_x' not in st.session_state:
         st.session_state.click_x = width // 2
     if 'click_y' not in st.session_state:
@@ -877,31 +878,43 @@ def select_color_from_image(frame):
     if 'selected_color' not in st.session_state:
         st.session_state.selected_color = None
 
-    # 이미지를 Canvas로 표시
     col1, col2 = st.columns([3, 1])
     
     with col1:
-        # Canvas 설정
+        # 이미지 품질 설정을 높게 설정하여 표시
         from streamlit_image_coordinates import streamlit_image_coordinates
         
         clicked_coords = streamlit_image_coordinates(
-            frame,
-            key="color_picker"
+            frame_rgb,
+            key="color_picker",
+            width=width  # 원본 크기 유지
         )
         
         if clicked_coords:
             # 클릭 좌표 업데이트
-            st.session_state.click_x = clicked_coords["x"]
-            st.session_state.click_y = clicked_coords["y"]
+            x, y = clicked_coords["x"], clicked_coords["y"]
+            st.session_state.click_x = x
+            st.session_state.click_y = y
             
-            # 선택한 좌표의 색상 저장
-            x, y = st.session_state.click_x, st.session_state.click_y
+            # BGR 형식으로 색상 저장
             st.session_state.selected_color = frame[y, x]
             
-            # 프레임 업데이트
-            frame_with_click = frame.copy()
-            cv2.circle(frame_with_click, (x, y), 5, (0, 255, 0), -1)
-            st.image(frame_with_click, channels="BGR", use_column_width=True)
+            # 클릭 위치 표시
+            frame_with_marker = frame_rgb.copy()
+            # 클릭 위치에 십자선 표시
+            marker_size = 10
+            marker_color = (0, 255, 0)  # RGB green
+            cv2.line(frame_with_marker, (x - marker_size, y), (x + marker_size, y), marker_color, 2)
+            cv2.line(frame_with_marker, (x, y - marker_size), (x, y + marker_size), marker_color, 2)
+            
+            # 선택 영역 확대
+            zoom_size = 50
+            x1, y1 = max(0, x - zoom_size), max(0, y - zoom_size)
+            x2, y2 = min(width, x + zoom_size), min(height, y + zoom_size)
+            zoomed_region = frame_rgb[y1:y2, x1:x2]
+            
+            st.image(frame_with_marker, caption="클릭하여 색상 선택", use_column_width=True)
+            st.image(zoomed_region, caption="선택 영역 확대", width=200)
     
     with col2:
         if st.session_state.selected_color is not None:
@@ -909,8 +922,8 @@ def select_color_from_image(frame):
             b, g, r = st.session_state.selected_color
             st.write("선택한 색상:")
             color_display = np.zeros((100, 100, 3), dtype=np.uint8)
-            color_display[:] = (b, g, r)
-            st.image(color_display, channels="BGR")
+            color_display[:] = (r, g, b)  # RGB 형식으로 변환
+            st.image(color_display)
             
             # HSV 색상 범위 설정
             h, s, v = rgb_to_hsv(r, g, b)
@@ -923,7 +936,12 @@ def select_color_from_image(frame):
             hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
             mask = cv2.inRange(hsv, lower_color, upper_color)
             mask_preview = cv2.bitwise_and(frame, frame, mask=mask)
-            st.image(mask_preview, channels="BGR", caption="마스크 미리보기")
+            mask_preview_rgb = cv2.cvtColor(mask_preview, cv2.COLOR_BGR2RGB)
+            st.image(mask_preview_rgb, caption="마스크 미리보기")
+            
+            # BGR 값과 HSV 값 표시
+            st.write(f"BGR 값: ({b}, {g}, {r})")
+            st.write(f"HSV 값: ({h}, {s}, {v})")
             
             # 선택 확인 버튼
             if st.button("이 색상으로 선택"):
