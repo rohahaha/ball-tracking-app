@@ -971,6 +971,9 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
             st.warning("색상을 선택해주세요.")
             return
             
+        # 색상값을 튜플로 변환
+        selected_color = tuple(map(int, selected_color))
+        
         # 거리 측정을 위한 점 선택
         st.write("알고 있는 실제 거리에 해당하는 두 점을 선택해주세요.")
         col1, col2 = st.columns(2)
@@ -980,10 +983,10 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
         with col2:
             x2 = st.slider('두 번째 점 X 좌표', 0, width, 3 * width // 4, key="x2_slider")
             y2 = st.slider('두 번째 점 Y 좌표', 0, height, height // 2, key="y2_slider")
-    
+        
         # 높이 기준점 선택
         st.write("높이의 기준점(h=0)을 선택해주세요.")
-        height_reference_y = st.slider('높이 기준점 Y 좌표', 0, height, height, key="height_ref_slider")
+        height_reference_y = st.slider('높이 기준점 Y 좌표', 0, height, height)
         height_reference = (0, height_reference_y)
         
         # 초기 바운딩 박스 설정 - 클릭한 위치 주변
@@ -1003,6 +1006,7 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
         cv2.line(frame_with_info, (x1, y1), (x2, y2), (0, 255, 0), 2)
         cv2.line(frame_with_info, (0, height_reference_y), (width, height_reference_y), (255, 0, 0), 2)
         cv2.rectangle(frame_with_info, (bbox_x, bbox_y), (bbox_x + bbox_w, bbox_y + bbox_h), (0, 255, 255), 2)
+        # 수정된 부분: 색상을 튜플로 전달
         cv2.circle(frame_with_info, click_pos, 5, selected_color, -1)  # 선택한 색상 위치 표시
         st.image(frame_with_info, channels="BGR", use_column_width=True)
         
