@@ -10,6 +10,7 @@ import os
 import gdown
 import traceback
 import urllib.request
+import time
 
 # Streamlit 페이지 설정 (반드시 다른 st 명령어보다 먼저 와야 함)
 st.set_page_config(
@@ -1043,146 +1044,29 @@ def process_video(video_path, initial_bbox, pixels_per_meter, mass, height_refer
         st.error("비디오 첫 프레임을 읽을 수 없습니다.")
         return
 
+    bbox = initial_bbox  # 기본값으로 초기 바운딩 박스 설정
     try:
-        bbox = detect_ball_with_yolo(first_frame, net, output_layers, classes)
-        if bbox is None:
-            st.warning("YOLO로 공을 감지할 수 없어 초기 설정된 위치를 사용합니다.")
-            bbox = initial_bbox
-        
-        # bbox가 tuple이 아닌 경우 변환
-        bbox = tuple(bbox) if not isinstance(bbox, tuple) else bbox
-        
-        # 트래커 초기화
-        init_success = tracker.init(first_frame, bbox)
-        if not init_success:
-            st.warning("트래커 초기화 문제 발생 - 단순 추적으로 계속합니다.")
-            bbox = initial_bbox  # 초기 바운딩 박스 사용
+        yolo_bbox = detect_ball_with_yolo(first_frame, net, output_layers, classes)
+        if yolo_bbox is not None:
+            bbox = yolo_bbox
         else:
-            st.success("트래커가 성공적으로 초기화되었습니다!")
-            
+            st.info("YOLO 검출 실패, 수동 설정된 위치를 사용합니다.")
     except Exception as e:
-        st.error(f"트래커 초기화 중 오류 발생: {str(e)}")
-        st.info("단순 추적으로 전환합니다.")
-        bbox = initial_bbox  # 초기 바운딩 박스 사용
+        st.error(f"YOLO 검출 중 오류 발생: {str(e)}")
+        st.info("수동 설정된 위치를 사용합니다.")
 
-    # 분석 변수 초기화
-    prev_pos = None
-    speed_queue = deque(maxlen=5)
-    speeds = []
-    kinetic_energies = []
-    potential_energies = []
-    mechanical_energies = []
-    frames = []
-
-    # Streamlit 디스플레이 요소
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    video_frame = st.empty()
-    speed_chart = st.empty()
-    energy_chart = st.empty()
-
-    frame_count = 0
-    total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-
-    while True:
-        ret, frame = video.read()
-        if not ret:
-            break
-
-        try:
-            # bbox가 정의되어 있는지 확인
-            if bbox is None:
-                bbox = initial_bbox
-
-            frame, center, bbox = track_ball(frame, tracker, bbox, lower_color, upper_color, 10, 50)
-            
-            if center:
-                if prev_pos:
-                    speed = calculate_speed(prev_pos, center, fps, pixels_per_meter)
-                    speed_queue.append(speed)
-                    avg_speed = sum(speed_queue) / len(speed_queue)
-                    
-                    h = (height_reference[1] - center[1]) / pixels_per_meter
-                    ke, pe, me = calculate_energy(avg_speed, h, mass)
-                    
-                    # 속도 표시
-                    cv2.putText(frame, f"Speed: {avg_speed*3.6:.2f} km/h", (10, 30),
-                              cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                    
-                    # 데이터 저장
-                    speeds.append(avg_speed*3.6)
-                    kinetic_energies.append(ke)
-                    potential_energies.append(pe)
-                    mechanical_energies.append(me)
-                    frames.append(frame_count)
-                
-                prev_pos = center
-
-            # 기준선 표시
-            cv2.line(frame, (0, height_reference[1]), (width, height_reference[1]), (255, 0, 0), 2)
-            
-            # 프레임 표시
-            video_frame.image(frame, channels="BGR", use_column_width=True)
-            
-            # 차트 업데이트 (30프레임마다)
-            if frame_count % 30 == 0 and frames:
-                update_charts(frames, speeds, kinetic_energies, potential_energies, 
-                            mechanical_energies, speed_chart, energy_chart, frame_count)
-
-        except Exception as e:
-            st.error(f"프레임 {frame_count} 처리 중 오류 발생: {str(e)}")
-            st.error(traceback.format_exc())
-
-        frame_count += 1
-        progress = int((frame_count / total_frames) * 100)
-        progress_bar.progress(progress)
-        status_text.text(f"Processing frame {frame_count}/{total_frames}")
-
-    video.release()
-    status_text.text("Video processing completed!")
-
-def process_video(video_path, initial_bbox, pixels_per_meter, mass, height_reference, net, output_layers, classes, lower_color, upper_color):
-    """비디오 처리 및 분석"""
-    video = cv2.VideoCapture(video_path)
-    fps = video.get(cv2.CAP_PROP_FPS)
-    width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
+    st.write(f"초기 바운딩 박스: {bbox}")
+    
     # 트래커 초기화
-    tracker = create_stable_tracker()
-    if tracker is None:
-        st.error("트래커를 생성할 수 없습니다. 프로그램을 종료합니다.")
-        return
-
-    # YOLO로 첫 프레임에서 공 탐지
-    ret, first_frame = video.read()
-    if not ret:
-        st.error("비디오 첫 프레임을 읽을 수 없습니다.")
-        return
-
     try:
-        bbox = detect_ball_with_yolo(first_frame, net, output_layers, classes)
-        if bbox is None:
-            st.warning("YOLO로 공을 감지할 수 없어 수동 설정된 위치를 사용합니다.")
-            bbox = initial_bbox
-        
-        # bbox가 tuple이 아닌 경우 변환
-        if not isinstance(bbox, tuple):
-            bbox = tuple(bbox)
-        
-        st.info(f"초기 바운딩 박스: {bbox}")
-        
-        # 트래커 초기화 시도
         init_success = tracker.init(first_frame, bbox)
-        if not init_success:
-            st.warning("트래커 초기화 문제 발생 - 단순 추적으로 계속합니다.")
-        else:
+        if init_success:
             st.success("트래커가 성공적으로 초기화되었습니다!")
-            
+        else:
+            st.warning("트래커 초기화 실패, 단순 추적으로 계속합니다.")
     except Exception as e:
         st.error(f"트래커 초기화 중 오류 발생: {str(e)}")
         st.info("단순 추적으로 전환합니다.")
-        tracker = create_stable_tracker()  # 새로운 트래커 생성 시도
 
     # 분석 변수 초기화
     prev_pos = None
@@ -1202,13 +1086,27 @@ def process_video(video_path, initial_bbox, pixels_per_meter, mass, height_refer
 
     frame_count = 0
     total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+    
+    # FPS 제어를 위한 시간 간격 계산
+    frame_interval = 1.0 / fps
+    last_frame_time = time.time()
 
+    st.write("영상 처리 중... (실시간 재생)")
+    
     while True:
         ret, frame = video.read()
         if not ret:
             break
 
         try:
+            # FPS 제어
+            current_time = time.time()
+            elapsed = current_time - last_frame_time
+            if elapsed < frame_interval:
+                time.sleep(frame_interval - elapsed)
+            last_frame_time = time.time()
+            
+            # 프레임 처리
             frame, center, bbox = track_ball(frame, tracker, bbox, lower_color, upper_color, 10, 50)
             
             if center:
@@ -1236,11 +1134,11 @@ def process_video(video_path, initial_bbox, pixels_per_meter, mass, height_refer
             # 기준선 표시
             cv2.line(frame, (0, height_reference[1]), (width, height_reference[1]), (255, 0, 0), 2)
             
-            # 프레임 표시
+            # 프레임 표시 (프레임 건너뛰기 없이)
             video_frame.image(frame, channels="BGR", use_column_width=True)
             
-            # 차트 업데이트 (30프레임마다)
-            if frame_count % 30 == 0 and frames:
+            # 차트 업데이트 (더 자주 업데이트)
+            if frame_count % 5 == 0 and frames:  # 5프레임마다 업데이트
                 update_charts(frames, speeds, kinetic_energies, potential_energies, 
                             mechanical_energies, speed_chart, energy_chart, frame_count)
 
@@ -1251,10 +1149,17 @@ def process_video(video_path, initial_bbox, pixels_per_meter, mass, height_refer
         frame_count += 1
         progress = int((frame_count / total_frames) * 100)
         progress_bar.progress(progress)
-        status_text.text(f"Processing frame {frame_count}/{total_frames}")
+        status_text.text(f"처리 중: {frame_count}/{total_frames} 프레임 ({progress}%)")
 
     video.release()
     status_text.text("Video processing completed!")
+    
+    # 최종 결과 표시
+    if speeds:
+        st.write(f"평균 속도: {np.mean(speeds):.2f} km/h")
+        st.write(f"최대 속도: {np.max(speeds):.2f} km/h")
+        st.write(f"최대 운동에너지: {np.max(kinetic_energies):.2f} J")
+        st.write(f"최대 위치에너지: {np.max(potential_energies):.2f} J")
 
 def process_uploaded_video(uploaded_file, net, output_layers, classes):
     """업로드된 비디오 처리"""
