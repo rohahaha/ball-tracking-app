@@ -864,93 +864,119 @@ def update_charts(frames, speeds, ke, pe, me, speed_chart, energy_chart, frame_c
 
 def select_color_from_image(frame):
     """이미지에서 클릭으로 색상 선택"""
+    if 'color_selected' not in st.session_state:
+        st.session_state.color_selected = False
+
     st.write("아래 이미지를 마우스로 클릭하여 공의 색상을 선택하세요.")
     
-    # BGR에서 RGB로 변환 (Streamlit 표시용)
+    # BGR에서 RGB로 변환
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     height, width = frame.shape[:2]
     
-    # 세션 상태 초기화
+    # 상태 초기화
     if 'click_x' not in st.session_state:
         st.session_state.click_x = width // 2
     if 'click_y' not in st.session_state:
         st.session_state.click_y = height // 2
     if 'selected_color' not in st.session_state:
         st.session_state.selected_color = None
+    if 'lower_color' not in st.session_state:
+        st.session_state.lower_color = None
+    if 'upper_color' not in st.session_state:
+        st.session_state.upper_color = None
+    if 'color_tolerance' not in st.session_state:
+        st.session_state.color_tolerance = 20
 
     col1, col2 = st.columns([3, 1])
     
     with col1:
-        # 이미지 품질 설정을 높게 설정하여 표시
         from streamlit_image_coordinates import streamlit_image_coordinates
         
+        frame_display = frame_rgb.copy()
+        if st.session_state.selected_color is not None:
+            # 이전 선택 위치 표시
+            x, y = st.session_state.click_x, st.session_state.click_y
+            marker_size = 10
+            cv2.line(frame_display, (x - marker_size, y), (x + marker_size, y), (0, 255, 0), 2)
+            cv2.line(frame_display, (x, y - marker_size), (x, y + marker_size), (0, 255, 0), 2)
+        
         clicked_coords = streamlit_image_coordinates(
-            frame_rgb,
-            key="color_picker",
-            width=width  # 원본 크기 유지
+            frame_display,
+            key="color_picker"
         )
         
         if clicked_coords:
-            # 클릭 좌표 업데이트
             x, y = clicked_coords["x"], clicked_coords["y"]
             st.session_state.click_x = x
             st.session_state.click_y = y
-            
-            # BGR 형식으로 색상 저장
             st.session_state.selected_color = frame[y, x]
             
-            # 클릭 위치 표시
+            # 현재 선택 위치 표시
             frame_with_marker = frame_rgb.copy()
-            # 클릭 위치에 십자선 표시
             marker_size = 10
-            marker_color = (0, 255, 0)  # RGB green
-            cv2.line(frame_with_marker, (x - marker_size, y), (x + marker_size, y), marker_color, 2)
-            cv2.line(frame_with_marker, (x, y - marker_size), (x, y + marker_size), marker_color, 2)
-            
-            # 선택 영역 확대
-            zoom_size = 50
-            x1, y1 = max(0, x - zoom_size), max(0, y - zoom_size)
-            x2, y2 = min(width, x + zoom_size), min(height, y + zoom_size)
-            zoomed_region = frame_rgb[y1:y2, x1:x2]
-            
+            cv2.line(frame_with_marker, (x - marker_size, y), (x + marker_size, y), (0, 255, 0), 2)
+            cv2.line(frame_with_marker, (x, y - marker_size), (x, y + marker_size), (0, 255, 0), 2)
             st.image(frame_with_marker, caption="클릭하여 색상 선택", use_column_width=True)
-            st.image(zoomed_region, caption="선택 영역 확대", width=200)
-    
+
     with col2:
         if st.session_state.selected_color is not None:
-            # 선택한 색상 표시
             b, g, r = st.session_state.selected_color
             st.write("선택한 색상:")
             color_display = np.zeros((100, 100, 3), dtype=np.uint8)
-            color_display[:] = (r, g, b)  # RGB 형식으로 변환
+            color_display[:] = (r, g, b)
             st.image(color_display)
             
-            # HSV 색상 범위 설정
             h, s, v = rgb_to_hsv(r, g, b)
-            color_tolerance = st.slider("색상 허용 범위", 0, 50, 20)
+            st.session_state.color_tolerance = st.slider(
+                "색상 허용 범위", 
+                0, 50, 
+                st.session_state.color_tolerance
+            )
+            
+            # HSV 색상 범위 업데이트
+            st.session_state.lower_color = np.array([
+                max(0, h - st.session_state.color_tolerance), 
+                max(0, s - 50), 
+                max(0, v - 50)
+            ])
+            st.session_state.upper_color = np.array([
+                min(179, h + st.session_state.color_tolerance), 
+                min(255, s + 50), 
+                min(255, v + 50)
+            ])
             
             # 마스크 미리보기
-            lower_color = np.array([max(0, h - color_tolerance), max(0, s - 50), max(0, v - 50)])
-            upper_color = np.array([min(179, h + color_tolerance), min(255, s + 50), min(255, v + 50)])
-            
             hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-            mask = cv2.inRange(hsv, lower_color, upper_color)
+            mask = cv2.inRange(hsv, st.session_state.lower_color, st.session_state.upper_color)
             mask_preview = cv2.bitwise_and(frame, frame, mask=mask)
             mask_preview_rgb = cv2.cvtColor(mask_preview, cv2.COLOR_BGR2RGB)
             st.image(mask_preview_rgb, caption="마스크 미리보기")
             
-            # BGR 값과 HSV 값 표시
+            # BGR, HSV 값 표시
             st.write(f"BGR 값: ({b}, {g}, {r})")
             st.write(f"HSV 값: ({h}, {s}, {v})")
             
-            # 선택 확인 버튼
+            # 색상 선택 확정 버튼
             if st.button("이 색상으로 선택"):
-                return (b, g, r), lower_color, upper_color, (st.session_state.click_x, st.session_state.click_y)
+                st.session_state.color_selected = True
+                return (tuple(st.session_state.selected_color), 
+                        st.session_state.lower_color, 
+                        st.session_state.upper_color, 
+                        (st.session_state.click_x, st.session_state.click_y))
+
+    if st.session_state.color_selected:
+        return (tuple(st.session_state.selected_color), 
+                st.session_state.lower_color, 
+                st.session_state.upper_color, 
+                (st.session_state.click_x, st.session_state.click_y))
     
     return None, None, None, None
 
 def process_uploaded_video(uploaded_file, net, output_layers, classes):
     """업로드된 비디오 처리"""
+    if 'video_settings' not in st.session_state:
+        st.session_state.video_settings = {}
+
     tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
     tfile.write(uploaded_file.read())
     tfile.close()
@@ -965,73 +991,106 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
         
         # 색상 선택
         selected_color, lower_color, upper_color, click_pos = select_color_from_image(first_frame)
+        if not any([selected_color is None, lower_color is None, upper_color is None, click_pos is None]):
+            st.session_state.video_settings.update({
+                'selected_color': selected_color,
+                'lower_color': lower_color,
+                'upper_color': upper_color,
+                'click_pos': click_pos
+            })
         
-        # 수정된 검사 방식
-        if selected_color is None or lower_color is None or upper_color is None or click_pos is None:
+            if all(k in st.session_state.video_settings for k in ['selected_color', 'lower_color', 'upper_color', 'click_pos']):
+                # 거리 측정을 위한 점 선택
+                settings_col1, settings_col2 = st.columns(2)
+                
+                with settings_col1:
+                    x1 = st.slider('첫 번째 점 X 좌표', 0, width, 
+                        st.session_state.video_settings.get('x1', width // 4),
+                        key='x1_slider')
+                    y1 = st.slider('첫 번째 점 Y 좌표', 0, height, 
+                        st.session_state.video_settings.get('y1', height // 2),
+                        key='y1_slider')
+                
+                with settings_col2:
+                    x2 = st.slider('두 번째 점 X 좌표', 0, width, 
+                        st.session_state.video_settings.get('x2', 3 * width // 4),
+                        key='x2_slider')
+                    y2 = st.slider('두 번째 점 Y 좌표', 0, height, 
+                        st.session_state.video_settings.get('y2', height // 2),
+                        key='y2_slider')
+
+                # 높이 기준점 선택
+                height_reference_y = st.slider('높이 기준점 Y 좌표', 0, height, 
+                    st.session_state.video_settings.get('height_reference_y', height),
+                    key='height_ref_slider')
+                height_reference = (0, height_reference_y)
+
+                # 설정값 저장
+                st.session_state.video_settings.update({
+                    'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
+                    'height_reference_y': height_reference_y
+                })
+
+                # 프레임에 정보 표시
+                frame_with_info = first_frame.copy()
+                cv2.circle(frame_with_info, (x1, y1), 5, (0, 255, 0), -1)
+                cv2.circle(frame_with_info, (x2, y2), 5, (0, 255, 0), -1)
+                cv2.line(frame_with_info, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.line(frame_with_info, (0, height_reference_y), (width, height_reference_y), (255, 0, 0), 2)
+
+                # 선택한 색상 위치 표시
+                click_x, click_y = st.session_state.video_settings['click_pos']
+                selected_color = st.session_state.video_settings['selected_color']
+                bbox_size = 50
+                bbox_x = max(0, click_x - bbox_size//2)
+                bbox_y = max(0, click_y - bbox_size//2)
+                bbox_w = min(bbox_size, width - bbox_x)
+                bbox_h = min(bbox_size, height - bbox_y)
+                
+                cv2.rectangle(frame_with_info, (bbox_x, bbox_y), 
+                             (bbox_x + bbox_w, bbox_y + bbox_h), (0, 255, 255), 2)
+                cv2.circle(frame_with_info, (click_x, click_y), 5, tuple(map(int, selected_color)), -1)
+
+                st.image(frame_with_info, channels="BGR", use_column_width=True)
+
+                # 실제 거리 입력
+                real_distance = st.number_input("선택한 두 점 사이의 실제 거리(미터)를 입력해주세요:", 
+                    min_value=0.1, 
+                    value=st.session_state.video_settings.get('real_distance', 1.0), 
+                    step=0.1)
+                
+                # 공의 질량 입력
+                mass = st.number_input("공의 질량(kg)을 입력해주세요:", 
+                    min_value=0.1, 
+                    value=st.session_state.video_settings.get('mass', 0.1), 
+                    step=0.1)
+
+                # 설정값 저장
+                st.session_state.video_settings.update({
+                    'real_distance': real_distance,
+                    'mass': mass
+                })
+
+                # pixels_per_meter 계산
+                pixel_distance = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+                pixels_per_meter = pixel_distance / real_distance
+                st.write(f"계산된 pixels_per_meter: {pixels_per_meter:.2f}")
+
+                # 분석 시작 버튼
+                if st.button('영상 내 공 추적 및 에너지 분석 시작하기'):
+                    initial_bbox = (bbox_x, bbox_y, bbox_w, bbox_h)
+                    st.write("Processing video...")
+                    try:
+                        process_video(tfile.name, initial_bbox, pixels_per_meter, mass, height_reference, 
+                                     net, output_layers, classes, 
+                                     st.session_state.video_settings['lower_color'],
+                                     st.session_state.video_settings['upper_color'])
+                    except Exception as e:
+                        st.error(f"비디오 처리 중 오류 발생: {str(e)}")
+                        st.error(traceback.format_exc())
+        else:
             st.warning("색상을 선택해주세요.")
-            return
-            
-        # 색상값을 튜플로 변환
-        selected_color = tuple(map(int, selected_color))
-        
-        # 거리 측정을 위한 점 선택
-        st.write("알고 있는 실제 거리에 해당하는 두 점을 선택해주세요.")
-        col1, col2 = st.columns(2)
-        with col1:
-            x1 = st.slider('첫 번째 점 X 좌표', 0, width, width // 4, key="x1_slider")
-            y1 = st.slider('첫 번째 점 Y 좌표', 0, height, height // 2, key="y1_slider")
-        with col2:
-            x2 = st.slider('두 번째 점 X 좌표', 0, width, 3 * width // 4, key="x2_slider")
-            y2 = st.slider('두 번째 점 Y 좌표', 0, height, height // 2, key="y2_slider")
-        
-        # 높이 기준점 선택
-        st.write("높이의 기준점(h=0)을 선택해주세요.")
-        height_reference_y = st.slider('높이 기준점 Y 좌표', 0, height, height)
-        height_reference = (0, height_reference_y)
-        
-        # 초기 바운딩 박스 설정 - 클릭한 위치 주변
-        click_x, click_y = click_pos
-        bbox_size = 50  # 초기 박스 크기
-        bbox_x = max(0, click_x - bbox_size//2)
-        bbox_y = max(0, click_y - bbox_size//2)
-        bbox_w = min(bbox_size, width - bbox_x)
-        bbox_h = min(bbox_size, height - bbox_y)
-        
-        initial_bbox = (bbox_x, bbox_y, bbox_w, bbox_h)
-        
-        # 프레임에 정보 표시
-        frame_with_info = first_frame.copy()
-        cv2.circle(frame_with_info, (x1, y1), 5, (0, 255, 0), -1)
-        cv2.circle(frame_with_info, (x2, y2), 5, (0, 255, 0), -1)
-        cv2.line(frame_with_info, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        cv2.line(frame_with_info, (0, height_reference_y), (width, height_reference_y), (255, 0, 0), 2)
-        cv2.rectangle(frame_with_info, (bbox_x, bbox_y), (bbox_x + bbox_w, bbox_y + bbox_h), (0, 255, 255), 2)
-        # 수정된 부분: 색상을 튜플로 전달
-        cv2.circle(frame_with_info, click_pos, 5, selected_color, -1)  # 선택한 색상 위치 표시
-        st.image(frame_with_info, channels="BGR", use_column_width=True)
-        
-        # 실제 거리 입력
-        real_distance = st.number_input("선택한 두 점 사이의 실제 거리(미터)를 입력해주세요:", 
-                                      min_value=0.1, value=1.0, step=0.1)
-        
-        # pixels_per_meter 계산
-        pixel_distance = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-        pixels_per_meter = pixel_distance / real_distance
-        st.write(f"계산된 pixels_per_meter: {pixels_per_meter:.2f}")
-        
-        # 공의 질량 입력
-        mass = st.number_input("공의 질량(kg)을 입력해주세요:", 
-                             min_value=0.1, value=0.1, step=0.1)
-        
-        if st.button('영상 내 공 추적 및 에너지 분석 시작하기'):
-            st.write("Processing video...")
-            try:
-                process_video(tfile.name, initial_bbox, pixels_per_meter, mass, height_reference, 
-                            net, output_layers, classes, lower_color, upper_color)
-            except Exception as e:
-                st.error(f"비디오 처리 중 오류 발생: {str(e)}")
-                st.error(traceback.format_exc())
-        
+
         try:
             os.unlink(tfile.name)
         except PermissionError:
