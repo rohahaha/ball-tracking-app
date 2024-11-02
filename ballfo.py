@@ -965,7 +965,9 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
         
         # 색상 선택
         selected_color, lower_color, upper_color, click_pos = select_color_from_image(first_frame)
-        if not all([selected_color, lower_color, upper_color, click_pos]):
+        
+        # 수정된 검사 방식
+        if selected_color is None or lower_color is None or upper_color is None or click_pos is None:
             st.warning("색상을 선택해주세요.")
             return
             
@@ -978,7 +980,7 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
         with col2:
             x2 = st.slider('두 번째 점 X 좌표', 0, width, 3 * width // 4, key="x2_slider")
             y2 = st.slider('두 번째 점 Y 좌표', 0, height, height // 2, key="y2_slider")
-        
+    
         # 높이 기준점 선택
         st.write("높이의 기준점(h=0)을 선택해주세요.")
         height_reference_y = st.slider('높이 기준점 Y 좌표', 0, height, height, key="height_ref_slider")
