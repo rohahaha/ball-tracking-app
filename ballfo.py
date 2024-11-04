@@ -796,13 +796,13 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
     trend_line_color = 'white' if trend_color == 'white' else 'black'
     
     if is_final:
-        # 세션 스테이트에 데이터 저장
-        st.session_state.frame_images = frame_images
-        st.session_state.ball_positions = ball_positions
-        st.session_state.speeds = speeds
-        st.session_state.frames = frames
-        st.session_state.graph_color = color
-        st.session_state.trend_line_color = trend_line_color
+        # 세션 스테이트에 데이터 저장 - 키 이름 변경
+        st.session_state['stored_frame_images'] = frame_images
+        st.session_state['stored_ball_positions'] = ball_positions
+        st.session_state['stored_speeds'] = speeds
+        st.session_state['stored_frames'] = frames
+        st.session_state['stored_color'] = color
+        st.session_state['stored_trend_color'] = trend_line_color
 
     data = speeds if is_final else speeds[-100:]
     x_data = frames if is_final else frames[-100:]
@@ -879,32 +879,32 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
         st.markdown("### 속도 분석 그래프")
         selected_points = plotly_events(speed_fig, click_event=True, hover_event=False)
         
-        # 프레임 표시를 위한 컨테이너
-        if selected_points:
-            point = selected_points[0]
-            frame_idx = int(point['x'])
+    # 프레임 표시를 위한 컨테이너
+    if selected_points:
+        point = selected_points[0]
+        frame_idx = int(point['x'])
+        
+        if frame_idx in st.session_state['stored_frame_images']:
+            st.markdown("### 선택한 프레임 분석")
+            col1, col2 = st.columns(2)
             
-            if frame_idx in st.session_state.frame_images:
-                st.markdown("### 선택한 프레임 분석")
-                col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(f"#### Frame {frame_idx}")
+                st.image(st.session_state['stored_frame_images'][frame_idx], channels="BGR", 
+                        caption=f"Speed: {st.session_state['stored_speeds'][st.session_state['stored_frames'].index(frame_idx)]:.1f} km/h")
+            
+            with col2:
+                st.markdown("#### 공의 궤적")
+                trajectory_img = st.session_state['stored_frame_images'][frame_idx].copy()
                 
-                with col1:
-                    st.markdown(f"#### Frame {frame_idx}")
-                    st.image(st.session_state.frame_images[frame_idx], channels="BGR", 
-                            caption=f"Speed: {st.session_state.speeds[st.session_state.frames.index(frame_idx)]:.1f} km/h")
+                for i in range(max(0, frame_idx-5), min(frame_idx+6, max(st.session_state['stored_frames'])+1)):
+                    if i in st.session_state['stored_ball_positions']:
+                        pos = st.session_state['stored_ball_positions'][i]
+                        color = (0, 255, 0) if i < frame_idx else (0, 0, 255) if i > frame_idx else (255, 0, 0)
+                        cv2.circle(trajectory_img, pos, 3, color, -1)
                 
-                with col2:
-                    st.markdown("#### 공의 궤적")
-                    trajectory_img = st.session_state.frame_images[frame_idx].copy()
-                    
-                    for i in range(max(0, frame_idx-5), min(frame_idx+6, max(st.session_state.frames)+1)):
-                        if i in st.session_state.ball_positions:
-                            pos = st.session_state.ball_positions[i]
-                            color = (0, 255, 0) if i < frame_idx else (0, 0, 255) if i > frame_idx else (255, 0, 0)
-                            cv2.circle(trajectory_img, pos, 3, color, -1)
-                    
-                    st.image(trajectory_img, channels="BGR", 
-                            caption="Green: Past, Red: Current, Blue: Future")
+                st.image(trajectory_img, channels="BGR", 
+                        caption="Green: Past, Red: Current, Blue: Future")
     else:
         speed_chart.plotly_chart(speed_fig, use_container_width=True, 
                                key=f"speed_chart_{frame_count}{'_final' if is_final else ''}")
