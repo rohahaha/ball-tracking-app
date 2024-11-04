@@ -26,15 +26,12 @@ st.set_page_config(
     }
 )
 
-# 앱 시작 부분(st.set_page_config 바로 다음)에 추가
+
+# 앱 시작 부분에 CSS 수정
 st.markdown("""
     <style>
     .stVideo {
-        width: 100%;
-    }
-    .stVideo > video {
-        width: 100%;
-        height: auto !important;
+        max-width: 384px !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -1093,12 +1090,35 @@ def detect_ball_with_yolo(frame, net, output_layers, classes):
         return None
 
 def resize_frame(frame, target_width=384):
-    """영상의 종횡비를 유지하면서 크기 조정"""
-    height, width = frame.shape[:2]
-    aspect_ratio = width / height
-    target_height = int(target_width / aspect_ratio)
-    resized_frame = cv2.resize(frame, (target_width, target_height))
-    return resized_frame
+    """영상의 종횡비를 유지하면서 안전하게 크기 조정"""
+    try:
+        if frame is None:
+            return None
+            
+        height, width = frame.shape[:2]
+        if width == 0 or height == 0:
+            return frame
+            
+        # 종횡비 계산
+        aspect_ratio = float(width) / float(height)
+        
+        # 새로운 높이 계산
+        target_height = int(round(target_width / aspect_ratio))
+        
+        # 최소 크기 보장
+        if target_height < 1:
+            target_height = 1
+        
+        # 리사이즈 수행
+        resized = cv2.resize(frame, (target_width, target_height), 
+                           interpolation=cv2.INTER_LINEAR)
+        
+        return resized
+        
+    except Exception as e:
+        st.error(f"프레임 리사이즈 중 오류 발생: {str(e)}")
+        return frame  # 오류 발생시 원본 반환
+
 
 def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers, 
                  classes, lower_color, upper_color, graph_color):
@@ -1288,16 +1308,16 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
     video.release()
     
     if ret:
-        # 첫 프레임 크기 조정 (종횡비 유지)
-        first_frame = resize_frame(first_frame)
-        st.video(tfile.name)
-        
-        height, width = first_frame.shape[:2]
-        # 첫 프레임 크기 조정
-        first_frame = cv2.resize(first_frame, (384, int(360 * (384/640))))
-        st.video(tfile.name)  # 기본 video 표시 사용
-        
-        height, width = first_frame.shape[:2]
+        try:
+            # 첫 프레임 크기 조정
+            first_frame = resize_frame(first_frame)
+            if first_frame is None:
+                st.error("프레임 처리 실패")
+                return
+                
+            st.video(tfile.name)  # 원본 비디오 표시
+            
+            height, width = first_frame.shape[:2]
         
         # 그래프 색상 선택
         graph_color = st.radio(
