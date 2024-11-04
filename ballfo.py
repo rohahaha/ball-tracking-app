@@ -923,21 +923,7 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
                 except ValueError:
                     st.error("올바른 프레임 번호를 입력해주세요.")
             
-            # CSV 다운로드 버튼
-            df = pd.DataFrame({
-                'Frame': frames,
-                'Speed (km/h)': speeds
-            })
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                "속도 데이터 다운로드 (CSV)",
-                csv,
-                "ball_speed_data.csv",
-                "text/csv",
-                key='download-csv'
-            )
     else:
-        # 실시간 업데이트에서는 단순히 그래프만 표시
         speed_chart.plotly_chart(speed_fig, use_container_width=True, 
                                key=f"speed_chart_{frame_count}")
 
@@ -987,7 +973,7 @@ def show_analysis_results():
         csv,
         "ball_speed_data.csv",
         "text/csv",
-        key='download-csv'
+        key='download-csv-result'  # key 변경
     )
 
 def select_color_from_image(frame):
