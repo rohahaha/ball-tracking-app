@@ -842,6 +842,8 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
         # 통계 정보 추가
         avg_speed = np.mean(data)
         max_speed = np.max(data)
+        min_speed = np.min(data)
+        
         speed_fig.add_hline(
             y=avg_speed,
             line_dash="dot",
@@ -857,54 +859,83 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
             annotation_position="right"
         )
 
+        # 통계 지표 표시
+        st.markdown("### 전체 통계")
+        cols = st.columns(3)
+        cols[0].metric("평균 속도", f"{avg_speed:.1f} km/h")
+        cols[1].metric("최대 속도", f"{max_speed:.1f} km/h")
+        cols[2].metric("최소 속도", f"{min_speed:.1f} km/h")
+
         # 그래프 표시
         st.plotly_chart(speed_fig, use_container_width=True)
         
-        # 프레임 선택을 위한 슬라이더 추가
+        # 프레임 분석 섹션
         if frame_images:
             st.markdown("### 프레임 분석")
-            # 10프레임 단위로 선택 가능하도록 설정
             available_frames = sorted(list(frame_images.keys()))
-            if available_frames:
-                selected_frame = st.slider(
-                    "분석할 프레임 선택", 
-                    min_value=min(available_frames),
-                    max_value=max(available_frames),
-                    value=min(available_frames),
-                    step=10
-                )
-                
-                if selected_frame in frame_images:
-                    col1, col2 = st.columns(2)
+            
+            # 프레임 번호 입력
+            frame_input = st.text_input(
+                "분석할 프레임 번호를 입력하세요 (Enter 키를 누르면 분석됩니다)",
+                help=f"가능한 프레임 범위: {min(available_frames)} ~ {max(available_frames)}"
+            )
+            
+            if frame_input:
+                try:
+                    selected_frame = int(frame_input)
+                    # 가장 가까운 저장된 프레임 찾기
+                    nearest_frame = min(available_frames, key=lambda x: abs(x - selected_frame))
                     
-                    with col1:
-                        st.markdown(f"#### Frame {selected_frame}")
-                        st.image(frame_images[selected_frame], channels="BGR", 
-                                caption=f"Speed: {speeds[frames.index(selected_frame)]:.1f} km/h")
-                    
-                    with col2:
-                        st.markdown("#### 공의 궤적")
-                        trajectory_img = frame_images[selected_frame].copy()
+                    if nearest_frame in frame_images:
+                        col1, col2 = st.columns(2)
                         
-                        # 이전 5개와 이후 5개 프레임의 궤적 표시
-                        for i in range(max(0, selected_frame-5), min(selected_frame+6, max(frames)+1)):
-                            if i in ball_positions:
-                                pos = ball_positions[i]
-                                color = (0, 255, 0) if i < selected_frame else\
-                                       (0, 0, 255) if i > selected_frame else\
-                                       (255, 0, 0)
-                                cv2.circle(trajectory_img, pos, 3, color, -1)
+                        with col1:
+                            st.markdown(f"#### Frame {nearest_frame}")
+                            current_speed = speeds[frames.index(nearest_frame)]
+                            frame_image = frame_images[nearest_frame]
+                            st.image(frame_image, channels="BGR", 
+                                   caption=f"Speed: {current_speed:.1f} km/h")
+                            
+                            # 속도 분석
+                            st.markdown("#### 속도 분석")
+                            speed_diff = current_speed - avg_speed
+                            st.write(f"- 현재 속도: {current_speed:.1f} km/h")
+                            st.write(f"- 평균 대비: {speed_diff:+.1f} km/h")
+                            st.write(f"- 최대 대비: {(current_speed/max_speed*100):.1f}%")
                         
-                        st.image(trajectory_img, channels="BGR", 
-                                caption="Green: Past, Red: Current, Blue: Future")
-                        
-                        # 현재 프레임의 상세 정보
-                        st.markdown("#### 상세 정보")
-                        st.write(f"- 프레임 번호: {selected_frame}")
-                        st.write(f"- 순간 속도: {speeds[frames.index(selected_frame)]:.1f} km/h")
-                        if selected_frame in ball_positions:
-                            x, y = ball_positions[selected_frame]
-                            st.write(f"- 공의 위치: ({x}, {y})")
+                        with col2:
+                            st.markdown("#### 공의 궤적")
+                            trajectory_img = frame_images[nearest_frame].copy()
+                            
+                            # 궤적 표시 (이전 5프레임 ~ 이후 5프레임)
+                            for i in range(max(0, nearest_frame-5), min(nearest_frame+6, max(frames)+1)):
+                                if i in ball_positions:
+                                    pos = ball_positions[i]
+                                    color = (0, 255, 0) if i < nearest_frame else\
+                                           (0, 0, 255) if i > nearest_frame else\
+                                           (255, 0, 0)
+                                    cv2.circle(trajectory_img, pos, 3, color, -1)
+                            
+                            st.image(trajectory_img, channels="BGR", 
+                                    caption="Green: Past, Red: Current, Blue: Future")
+                    else:
+                        st.warning("선택한 프레임에 대한 데이터가 없습니다.")
+                except ValueError:
+                    st.error("올바른 프레임 번호를 입력해주세요.")
+            
+            # CSV 다운로드 버튼
+            df = pd.DataFrame({
+                'Frame': frames,
+                'Speed (km/h)': speeds
+            })
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                "속도 데이터 다운로드 (CSV)",
+                csv,
+                "ball_speed_data.csv",
+                "text/csv",
+                key='download-csv'
+            )
     else:
         # 실시간 업데이트에서는 단순히 그래프만 표시
         speed_chart.plotly_chart(speed_fig, use_container_width=True, 
