@@ -853,9 +853,10 @@ def rgb_to_hsv(r, g, b):
     h, s, v = colorsys.rgb_to_hsv(r, g, b)
     return int(h * 179), int(s * 255), int(v * 255)
 
-def update_charts(frames, speeds, speed_chart, frame_count, graph_color, is_final=False):
+def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_color, is_final=False):
     """차트 업데이트"""
     color = 'white' if graph_color == 'white' else 'black'
+    trend_line_color = 'white' if trend_color == 'white' else 'black'
     
     # 실시간 또는 최종 그래프 생성
     data = speeds if is_final else speeds[-100:]
@@ -868,6 +869,31 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, is_fina
         name='Speed (km/h)',
         line=dict(color=color)
     ))
+    
+    # 10프레임마다 추세선 추가
+    if len(x_data) > 10:
+        # numpy 배열로 변환
+        x_np = np.array(x_data)
+        y_np = np.array(data)
+        
+        # 10프레임마다의 인덱스 생성
+        indices = range(0, len(x_data), 10)
+        x_trend = x_np[indices]
+        y_trend = y_np[indices]
+        
+        if len(x_trend) > 1:  # 최소 2개 이상의 포인트가 필요
+            # 1차 다항식 피팅 (선형 추세선)
+            z = np.polyfit(x_trend, y_trend, 1)
+            p = np.poly1d(z)
+            
+            # 추세선 추가
+            speed_fig.add_trace(go.Scatter(
+                x=x_trend,
+                y=p(x_trend),
+                mode='lines',
+                name='Trend (10 frames)',
+                line=dict(color=trend_line_color, dash='dot'),
+            ))
     
     # 그래프 레이아웃 설정
     speed_fig.update_layout(
@@ -893,38 +919,26 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, is_fina
             )
         )
         
-        # 이동 평균선 추가
-        window = 10  # 이동 평균 윈도우 크기
-        moving_avg = pd.Series(data).rolling(window=window).mean()
-        speed_fig.add_trace(go.Scatter(
-            x=x_data,
-            y=moving_avg,
-            mode='lines',
-            name=f'{window}-frame Moving Average',
-            line=dict(color='red', dash='dash')
-        ))
-        
         # 통계 정보 추가
         avg_speed = np.mean(data)
         max_speed = np.max(data)
         speed_fig.add_hline(
             y=avg_speed,
             line_dash="dot",
-            line_color="green",
+            line_color=color,
             annotation_text=f"Average: {avg_speed:.1f} km/h",
             annotation_position="right"
         )
         speed_fig.add_hline(
             y=max_speed,
             line_dash="dot",
-            line_color="red",
+            line_color=color,
             annotation_text=f"Max: {max_speed:.1f} km/h",
             annotation_position="right"
         )
     
     speed_chart.plotly_chart(speed_fig, use_container_width=True, 
                            key=f"speed_chart_{frame_count}{'_final' if is_final else ''}")
-
 
 
 def select_color_from_image(frame):
@@ -1322,22 +1336,36 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
         
         height, width = first_frame.shape[:2]
         
-        # 그래프 색상 선택
-        graph_color = st.radio(
-            "그래프 색상을 선택하세요:",
-            ('white', 'black'),
-            key='graph_color'
-        )
+        # 그래프 설정을 위한 컬럼 생성
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # 메인 그래프 색상 선택
+            graph_color = st.radio(
+                "메인 그래프 색상:",
+                ('white', 'black'),
+                key='graph_color'
+            )
+            
+        with col2:
+            # 추세선 색상 선택
+            trend_color = st.radio(
+                "추세선 색상:",
+                ('white', 'black'),
+                key='trend_color'
+            )
         
         # 색상 선택
         selected_color, lower_color, upper_color, click_pos = select_color_from_image(first_frame)
         if not any([selected_color is None, lower_color is None, upper_color is None, click_pos is None]):
+            # video settings 업데이트 - 모든 설정을 한번에 업데이트
             st.session_state.video_settings.update({
                 'selected_color': selected_color,
                 'lower_color': lower_color,
                 'upper_color': upper_color,
                 'click_pos': click_pos,
-                'graph_color': graph_color
+                'graph_color': graph_color,
+                'trend_color': trend_color
             })
         
             if all(k in st.session_state.video_settings for k in 
@@ -1402,11 +1430,16 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
                 if st.button('영상 내 공 추적 및 분석 시작하기'):
                     initial_bbox = (bbox_x, bbox_y, bbox_w, bbox_h)
                     st.write("Processing video...")
-                    process_video(tfile.name, initial_bbox, pixels_per_meter, 
-                               net, output_layers, classes, 
-                               st.session_state.video_settings['lower_color'],
-                               st.session_state.video_settings['upper_color'],
-                               st.session_state.video_settings['graph_color'])
+                    try:
+                        process_video(tfile.name, initial_bbox, pixels_per_meter, 
+                                   net, output_layers, classes, 
+                                   st.session_state.video_settings['lower_color'],
+                                   st.session_state.video_settings['upper_color'],
+                                   st.session_state.video_settings['graph_color'],
+                                   st.session_state.video_settings['trend_color'])
+                    except Exception as e:
+                        st.error(f"비디오 처리 중 오류 발생: {str(e)}")
+                        st.error(traceback.format_exc())
             else:
                 st.warning("색상을 선택해주세요.")
 
