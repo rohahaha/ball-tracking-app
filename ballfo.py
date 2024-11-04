@@ -1,17 +1,24 @@
-import cv2
-import numpy as np
-import streamlit as st
-from collections import deque
-import plotly.graph_objs as go
-import pandas as pd
-from scipy.signal import savgol_filter
-import colorsys
-import tempfile
-import os
-import gdown
-import traceback
-import urllib.request
-import time
+# 라이브러리 의존성 체크를 위한 try-except 블록
+try:
+    import cv2
+    import numpy as np
+    import streamlit as st
+    from collections import deque
+    import plotly.graph_objs as go
+    import pandas as pd
+    from scipy.signal import savgol_filter
+    import colorsys
+    import tempfile
+    import os
+    import gdown
+    import traceback
+    import urllib.request
+    from streamlit_image_coordinates import streamlit_image_coordinates
+except ImportError as e:
+    st.error(f"필요한 라이브러리가 설치되지 않았습니다: {str(e)}")
+    st.info("다음 명령어로 필요한 라이브러리를 설치하세요:")
+    st.code("pip install opencv-python numpy streamlit plotly pandas scipy gdown streamlit-image-coordinates")
+    st.stop()  # 추가: 라이브러리가 없으면 여기서 실행 중단
 
 # Streamlit 페이지 설정 (반드시 다른 st 명령어보다 먼저 와야 함)
 st.set_page_config(
