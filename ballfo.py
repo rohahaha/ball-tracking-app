@@ -1087,21 +1087,20 @@ def detect_ball_with_yolo(frame, net, output_layers, classes):
         st.error(f"공 검출 중 오류 발생: {str(e)}")
         return None
 
-def resize_frame(frame, target_width=384):  # 640 * 0.6 = 384로 변경
+def resize_frame(frame, target_width=384):
     """영상의 종횡비를 유지하면서 크기 조정"""
     height, width = frame.shape[:2]
     aspect_ratio = width / height
     target_height = int(target_width / aspect_ratio)
-    return cv2.resize(frame, (target_width, target_height))
+    resized_frame = cv2.resize(frame, (target_width, target_height))
+    return resized_frame
 
 def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers, 
                  classes, lower_color, upper_color, graph_color):
     """비디오 처리 및 분석"""
     video = cv2.VideoCapture(video_path)
     fps = video.get(cv2.CAP_PROP_FPS)
-    width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
+    
     # Streamlit 레이아웃 설정
     col1, col2 = st.columns([2, 1])
     
@@ -1187,8 +1186,8 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 time.sleep(frame_interval - elapsed)
             last_frame_time = time.time()
             
-            # 프레임 크기 조정 (384px로)
-            frame = cv2.resize(frame, (384, int(360 * (384/640))))
+            # 프레임 크기 조정 (종횡비 유지)
+            frame = resize_frame(frame)
             
             # 프레임 처리
             frame, center, bbox = track_ball(frame, tracker, bbox, lower_color, upper_color, 10, 50)
@@ -1284,6 +1283,11 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
     video.release()
     
     if ret:
+        # 첫 프레임 크기 조정 (종횡비 유지)
+        first_frame = resize_frame(first_frame)
+        st.video(tfile.name)
+        
+        height, width = first_frame.shape[:2]
         # 첫 프레임 크기 조정
         first_frame = cv2.resize(first_frame, (384, int(360 * (384/640))))
         st.video(tfile.name)  # 기본 video 표시 사용
