@@ -1138,23 +1138,28 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
 
     analysis_container = st.container()
 
+    # 프레임 카운터와 데이터 저장소
+    frames = []
+    speeds = []
+    ball_positions = {}
+    key_frames = {}
+    frame_interval = 10  # 매 10프레임마다 저장
+    
     # 트래커 초기화
     tracker = create_stable_tracker()
     if tracker is None:
         st.error("트래커를 생성할 수 없습니다. 프로그램을 종료합니다.")
         return
 
-    # 첫 프레임 읽기 및 bbox 초기화
+    # 첫 프레임 읽기
     ret, first_frame = video.read()
     if not ret:
         st.error("비디오 첫 프레임을 읽을 수 없습니다.")
         return
 
-    # bbox 초기화 - initial_bbox 사용
+    # bbox 초기화
     bbox = initial_bbox
-    
-    # 첫 프레임 크기 조정 (384px로)
-    first_frame = cv2.resize(first_frame, (384, int(360 * (384/640))))
+    first_frame = resize_frame(first_frame)
 
     # YOLO로 공 검출 시도
     try:
@@ -1162,11 +1167,8 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
         if yolo_bbox is not None:
             bbox = yolo_bbox
             st.success("YOLO로 공을 성공적으로 검출했습니다.")
-        else:
-            st.info("YOLO 검출 실패, 수동 설정된 위치를 사용합니다.")
     except Exception as e:
         st.warning(f"YOLO 검출 중 오류 발생: {str(e)}")
-        st.info("수동 설정된 위치를 사용합니다.")
 
     # 트래커 초기화
     try:
@@ -1175,13 +1177,10 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
             st.warning("트래커 초기화 실패, 단순 추적으로 계속합니다.")
     except Exception as e:
         st.error(f"트래커 초기화 중 오류 발생: {str(e)}")
-        st.info("단순 추적으로 전환합니다.")
 
     # 변수 초기화
     prev_pos = None
     speed_queue = deque(maxlen=5)
-    speeds = []
-    frames = []
     frame_count = 0
     total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
 
@@ -1194,13 +1193,7 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     last_frame_time = time.time()
 
     st.write("영상 처리 중... (실시간 재생)")
-    
-    # 첫 프레임 다시 처리
     video.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                     
-    # 프레임 저장을 위한 딕셔너리
-    frame_images = {}
-    ball_positions = {}
 
     while True:
         ret, frame = video.read()
@@ -1208,17 +1201,12 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
             break
 
         try:
-            # FPS 제어
             current_time = time.time()
             elapsed = current_time - last_frame_time
             if elapsed < frame_interval:
                 time.sleep(frame_interval - elapsed)
             last_frame_time = time.time()
             
-            # 프레임 크기 조정 (종횡비 유지)
-            frame = resize_frame(frame)
-            
-            # 프레임 처리
             frame = resize_frame(frame)
             processed_frame, center, bbox = track_ball(frame, tracker, bbox, lower_color, upper_color, 10, 50)
             
@@ -1229,27 +1217,24 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 
                 speeds.append(avg_speed*3.6)
                 frames.append(frame_count)
+                ball_positions[frame_count] = center
+                
+                if frame_count % 10 == 0:  # 키프레임 저장
+                    key_frames[frame_count] = processed_frame.copy()
                 
                 real_time_speed.markdown(f"### Current Speed\n{avg_speed*3.6:.1f} km/h")
                 
-                cv2.putText(frame, f"Speed: {avg_speed*3.6:.1f} km/h", 
-                          (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-
-                # 프레임과 공의 위치 저장
-                frame_images[frame_count] = processed_frame.copy()
-                ball_positions[frame_count] = center
-    
+                if frame_count % 5 == 0 and speeds:  # 실시간 차트 업데이트
+                    update_charts(frames[-100:], speeds[-100:], speed_chart, frame_count, 
+                                graph_color, trend_color, is_final=False)
+            
             if center:
                 prev_pos = center
             
-            video_frame.image(frame, channels="BGR", use_column_width=False)
-            
-            if frame_count % 5 == 0 and frames:  # trend_color 인자 추가
-                update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_color)
+            video_frame.image(processed_frame, channels="BGR", use_column_width=False)
 
         except Exception as e:
             st.error(f"프레임 {frame_count} 처리 중 오류 발생: {str(e)}")
-            st.error(traceback.format_exc())
             if 'bbox' not in locals():
                 bbox = initial_bbox
 
@@ -1261,17 +1246,22 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     video.release()
     status_text.text("영상 처리가 완료되었습니다!")
 
-    # 분석 결과 표시
-    with analysis_container:
-        st.markdown("## 분석 결과")
-        if speeds:
-            # 모든 분석 결과는 update_charts 함수 내에서 처리
-            update_charts(frames, speeds, None, frame_count, 
-                         graph_color, trend_color, is_final=True,
-                         frame_images=frame_images, 
-                         ball_positions=ball_positions)
-        else:
-            st.warning("속도 데이터가 기록되지 않았습니다.")
+    # 분석 결과 저장 및 표시
+    if speeds:
+        st.session_state['analysis_data'] = {
+            'frames': frames,
+            'speeds': speeds,
+            'key_frames': key_frames,
+            'ball_positions': ball_positions,
+            'graph_color': graph_color,
+            'trend_color': trend_color
+        }
+        
+        # 분석 결과 표시
+        with analysis_container:
+            show_analysis_results()
+    else:
+        st.warning("속도 데이터가 기록되지 않았습니다.")
 
 
 def process_uploaded_video(uploaded_file, net, output_layers, classes):
