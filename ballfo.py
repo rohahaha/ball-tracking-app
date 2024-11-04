@@ -1,24 +1,17 @@
-# 라이브러리 의존성 체크를 위한 try-except 블록
-try:
-    import cv2
-    import numpy as np
-    import streamlit as st
-    from collections import deque
-    import plotly.graph_objs as go
-    import pandas as pd
-    from scipy.signal import savgol_filter
-    import colorsys
-    import tempfile
-    import os
-    import gdown
-    import traceback
-    import urllib.request
-    from streamlit_image_coordinates import streamlit_image_coordinates
-except ImportError as e:
-    st.error(f"필요한 라이브러리가 설치되지 않았습니다: {str(e)}")
-    st.info("다음 명령어로 필요한 라이브러리를 설치하세요:")
-    st.code("pip install opencv-python numpy streamlit plotly pandas scipy gdown streamlit-image-coordinates")
-    st.stop()  # 추가: 라이브러리가 없으면 여기서 실행 중단
+import cv2
+import numpy as np
+import streamlit as st
+from collections import deque
+import plotly.graph_objs as go
+import pandas as pd
+from scipy.signal import savgol_filter
+import colorsys
+import tempfile
+import os
+import gdown
+import traceback
+import urllib.request
+import time
 
 # Streamlit 페이지 설정 (반드시 다른 st 명령어보다 먼저 와야 함)
 st.set_page_config(
@@ -972,6 +965,13 @@ def select_color_from_image(frame):
             st.session_state.click_x = x
             st.session_state.click_y = y
             st.session_state.selected_color = frame[y, x]
+            
+            # 현재 선택 위치 표시
+            frame_with_marker = frame_rgb.copy()
+            marker_size = 10
+            cv2.line(frame_with_marker, (x - marker_size, y), (x + marker_size, y), (0, 255, 0), 2)
+            cv2.line(frame_with_marker, (x, y - marker_size), (x, y + marker_size), (0, 255, 0), 2)
+            st.image(frame_with_marker, caption="클릭하여 색상 선택", use_column_width=True)
 
     with col2:
         if st.session_state.selected_color is not None:
@@ -1005,7 +1005,7 @@ def select_color_from_image(frame):
             mask = cv2.inRange(hsv, st.session_state.lower_color, st.session_state.upper_color)
             mask_preview = cv2.bitwise_and(frame, frame, mask=mask)
             mask_preview_rgb = cv2.cvtColor(mask_preview, cv2.COLOR_BGR2RGB)
-            st.image(mask_preview_rgb, caption="마스크 미리보기", use_column_width=True)
+            st.image(mask_preview_rgb, caption="마스크 미리보기")
             
             # BGR, HSV 값 표시
             st.write(f"BGR 값: ({b}, {g}, {r})")
@@ -1079,13 +1079,12 @@ def detect_ball_with_yolo(frame, net, output_layers, classes):
         st.error(f"공 검출 중 오류 발생: {str(e)}")
         return None
 
-def resize_frame(frame, target_width=384):  # 640 * 0.6 = 384로 변경
+def resize_frame(frame, target_width=640):
     """영상의 종횡비를 유지하면서 크기 조정"""
     height, width = frame.shape[:2]
     aspect_ratio = width / height
     target_height = int(target_width / aspect_ratio)
     return cv2.resize(frame, (target_width, target_height))
-
 
 def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers, 
                  classes, lower_color, upper_color, graph_color):
@@ -1291,8 +1290,8 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
     video.release()
     
     if ret:
-        # 간단한 방식으로 비디오 표시
-        st.video(uploaded_file)
+        # 비디오 표시 (원본 크기 유지)
+        st.video(tfile.name)
         
         # 첫 프레임 크기 조정 (종횡비 유지)
         first_frame = resize_frame(first_frame)
@@ -1366,8 +1365,7 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
 
                 # 설정값 저장
                 st.session_state.video_settings.update({
-                    'real_distance': real_distance,
-                    'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2
+                    'real_distance': real_distance
                 })
 
                 # pixels_per_meter 계산
@@ -1396,7 +1394,7 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
         except PermissionError:
             pass
     else:
-        st.error("비디오 첫 프레임을 읽을 수 없습니다.")
+        st.error("Failed to read the first frame of the video.")
 
 def main():
     """메인 실행 함수"""
