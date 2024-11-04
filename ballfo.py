@@ -12,6 +12,7 @@ import gdown
 import traceback
 import urllib.request
 import time
+import base64 
 
 # Streamlit 페이지 설정 (반드시 다른 st 명령어보다 먼저 와야 함)
 st.set_page_config(
@@ -1072,12 +1073,13 @@ def detect_ball_with_yolo(frame, net, output_layers, classes):
         st.error(f"공 검출 중 오류 발생: {str(e)}")
         return None
 
-def resize_frame(frame, target_width=640):
+def resize_frame(frame, target_width=384):  # 640 * 0.6 = 384로 변경
     """영상의 종횡비를 유지하면서 크기 조정"""
     height, width = frame.shape[:2]
     aspect_ratio = width / height
     target_height = int(target_width / aspect_ratio)
     return cv2.resize(frame, (target_width, target_height))
+
 
 def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers, 
                  classes, lower_color, upper_color, graph_color):
@@ -1283,7 +1285,16 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
     video.release()
     
     if ret:
-        # 비디오 표시 (원본 크기 유지)
+        # 비디오 표시 크기 제한을 위한 CSS 추가
+        st.markdown("""
+            <style>
+                .stVideo {
+                    max-width: 384px !important;
+                }
+            </style>
+            """, unsafe_allow_html=True)
+        
+        # 일반적인 비디오 표시 방식 사용
         st.video(tfile.name)
         
         # 첫 프레임 크기 조정 (종횡비 유지)
