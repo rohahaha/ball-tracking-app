@@ -30,10 +30,15 @@ st.set_page_config(
 st.markdown("""
     <style>
     .stVideo {
-        max-width: 384px !important;
+        width: 100%;
+    }
+    .stVideo > video {
+        width: 100%;
+        height: auto !important;
     }
     </style>
     """, unsafe_allow_html=True)
+
 # 앱 제목
 st.title('공 추적 및 에너지 분석기')
 
