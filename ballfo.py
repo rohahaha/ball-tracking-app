@@ -26,19 +26,14 @@ st.set_page_config(
     }
 )
 
-# 앱 시작 부분에 CSS 추가
+# 앱 시작 부분(st.set_page_config 바로 다음)에 추가
 st.markdown("""
     <style>
-        .stVideo {
-            width: 384px !important;
-        }
-        .stVideo video {
-            width: 100% !important;
-            height: auto !important;
-        }
+    .stVideo {
+        max-width: 384px !important;
+    }
     </style>
     """, unsafe_allow_html=True)
-
 # 앱 제목
 st.title('공 추적 및 에너지 분석기')
 
