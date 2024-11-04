@@ -593,16 +593,15 @@ def verify_yolo_files():
 def initialize_yolo():
     """YOLO 모델 초기화"""
     try:
+        # 파일 존재 여부 확인
         if not verify_yolo_files():
             st.warning("YOLO 모델 파일이 없거나 불완전합니다. 다운로드가 필요합니다.")
             if st.button("YOLO 파일 다운로드"):
                 if not download_yolo_files():
                     st.error("파일 다운로드에 실패했습니다.")
                     return None, None, None
-                if not verify_yolo_files():
-                    st.error("다운로드된 파일이 올바르지 않습니다.")
-                    return None, None, None
-        
+
+        # 파일이 있으면 모델 로드 시작
         weights_path = os.path.join(YOLO_DIR, WEIGHTS_FILENAME)
         cfg_path = os.path.join(YOLO_DIR, "yolov4.cfg")
         names_path = os.path.join(YOLO_DIR, "coco.names")
