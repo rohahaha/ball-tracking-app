@@ -1079,27 +1079,13 @@ def detect_ball_with_yolo(frame, net, output_layers, classes):
         st.error(f"공 검출 중 오류 발생: {str(e)}")
         return None
 
-def resize_frame(frame, target_width=640):
-    """영상의 종횡비를 유지하면서 크기 조정"""
-    height, width = frame.shape[:2]
-    aspect_ratio = width / height
-    target_height = int(target_width / aspect_ratio)
-    return cv2.resize(frame, (target_width, target_height))
-
 def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers, 
                  classes, lower_color, upper_color, graph_color):
     """비디오 처리 및 분석"""
     video = cv2.VideoCapture(video_path)
     fps = video.get(cv2.CAP_PROP_FPS)
-    orig_width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
-    orig_height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    
-    # 크기 조정 비율 계산
-    scale_ratio = 640 / orig_width
-    
-    # bbox 크기 조정
-    if initial_bbox:
-        initial_bbox = tuple(int(x * scale_ratio) for x in initial_bbox)
+    width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     # Streamlit 레이아웃 설정
     col1, col2 = st.columns([2, 1])
@@ -1125,12 +1111,12 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
         st.error("비디오 첫 프레임을 읽을 수 없습니다.")
         return
 
-    # 첫 프레임 크기 조정 (종횡비 유지)
-    first_frame = resize_frame(first_frame)
-    
-    # bbox 초기화
+    # bbox 초기화 - initial_bbox 사용
     bbox = initial_bbox
     
+    # 첫 프레임 크기 조정
+    first_frame = cv2.resize(first_frame, (640, 360))
+
     # YOLO로 공 검출 시도
     try:
         yolo_bbox = detect_ball_with_yolo(first_frame, net, output_layers, classes)
@@ -1186,20 +1172,14 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 time.sleep(frame_interval - elapsed)
             last_frame_time = time.time()
             
-            # 프레임 크기 조정 (종횡비 유지)
-            frame = resize_frame(frame)
+            # 프레임 크기 조정
+            frame = cv2.resize(frame, (640, 360))
             
             # 프레임 처리
             frame, center, bbox = track_ball(frame, tracker, bbox, lower_color, upper_color, 10, 50)
             
             if center and prev_pos:
-                # 속도 계산 시 스케일 비율 고려
-                speed = calculate_speed(
-                    (prev_pos[0] / scale_ratio, prev_pos[1] / scale_ratio),
-                    (center[0] / scale_ratio, center[1] / scale_ratio),
-                    fps, 
-                    pixels_per_meter
-                )
+                speed = calculate_speed(prev_pos, center, fps, pixels_per_meter)
                 speed_queue.append(speed)
                 avg_speed = sum(speed_queue) / len(speed_queue)
                 
@@ -1227,6 +1207,7 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
         except Exception as e:
             st.error(f"프레임 {frame_count} 처리 중 오류 발생: {str(e)}")
             st.error(traceback.format_exc())
+            # 오류 발생 시에도 bbox 유지
             if 'bbox' not in locals():
                 bbox = initial_bbox
 
@@ -1243,7 +1224,7 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     with analysis_container:
         st.markdown("## 분석 결과")
         
-        if speeds:
+        if speeds:  # 속도 데이터가 있는 경우에만 표시
             # 기본 통계
             col1, col2, col3 = st.columns(3)
             with col1:
@@ -1275,7 +1256,6 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
         else:
             st.warning("속도 데이터가 기록되지 않았습니다.")
 
-
 def process_uploaded_video(uploaded_file, net, output_layers, classes):
     """업로드된 비디오 처리"""
     if 'video_settings' not in st.session_state:
@@ -1290,11 +1270,10 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
     video.release()
     
     if ret:
-        # 비디오 표시 (원본 크기 유지)
-        st.video(tfile.name)
+        # 비디오 크기 조정
+        first_frame = cv2.resize(first_frame, (640, 360))
+        st.video(tfile.name, start_time=0)
         
-        # 첫 프레임 크기 조정 (종횡비 유지)
-        first_frame = resize_frame(first_frame)
         height, width = first_frame.shape[:2]
         
         # 그래프 색상 선택
