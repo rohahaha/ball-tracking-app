@@ -842,26 +842,30 @@ def rgb_to_hsv(r, g, b):
     h, s, v = colorsys.rgb_to_hsv(r, g, b)
     return int(h * 179), int(s * 255), int(v * 255)
 
-def update_charts(frames, speeds, ke, pe, me, speed_chart, energy_chart, frame_count):
+def update_charts(frames, speeds, speed_chart, frame_count, graph_color):
     """차트 업데이트"""
-    speed_fig = go.Figure(go.Scatter(x=frames[-100:], y=speeds[-100:], 
-                                   mode='lines', name='Speed (km/h)'))
-    speed_fig.update_layout(title="Speed over time (last 100 frames)", 
-                          xaxis_title="Frame", yaxis_title="Speed (km/h)")
+    color = 'white' if graph_color == 'white' else 'black'
+    
+    speed_fig = go.Figure(go.Scatter(
+        x=frames[-100:], 
+        y=speeds[-100:], 
+        mode='lines', 
+        name='Speed (km/h)',
+        line=dict(color=color)
+    ))
+    
+    speed_fig.update_layout(
+        title="Speed over time (last 100 frames)",
+        xaxis_title="Frame",
+        yaxis_title="Speed (km/h)",
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(color=color)
+    )
+    
     speed_chart.plotly_chart(speed_fig, use_container_width=True, 
                            key=f"speed_chart_{frame_count}")
-    
-    energy_fig = go.Figure()
-    energy_fig.add_trace(go.Scatter(x=frames[-100:], y=ke[-100:], 
-                                  mode='lines', name='Kinetic Energy (J)'))
-    energy_fig.add_trace(go.Scatter(x=frames[-100:], y=pe[-100:], 
-                                  mode='lines', name='Potential Energy (J)'))
-    energy_fig.add_trace(go.Scatter(x=frames[-100:], y=me[-100:], 
-                                  mode='lines', name='Mechanical Energy (J)'))
-    energy_fig.update_layout(title="Energy over time (last 100 frames)", 
-                           xaxis_title="Frame", yaxis_title="Energy (J)")
-    energy_chart.plotly_chart(energy_fig, use_container_width=True, 
-                            key=f"energy_chart_{frame_count}")
+
 
 def select_color_from_image(frame):
     """이미지에서 클릭으로 색상 선택"""
@@ -1025,7 +1029,8 @@ def detect_ball_with_yolo(frame, net, output_layers, classes):
         st.error(f"공 검출 중 오류 발생: {str(e)}")
         return None
 
-def process_video(video_path, initial_bbox, pixels_per_meter, mass, height_reference, net, output_layers, classes, lower_color, upper_color):
+def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers, 
+                 classes, lower_color, upper_color, graph_color):
     """비디오 처리 및 분석"""
     video = cv2.VideoCapture(video_path)
     fps = video.get(cv2.CAP_PROP_FPS)
@@ -1044,7 +1049,7 @@ def process_video(video_path, initial_bbox, pixels_per_meter, mass, height_refer
         st.error("비디오 첫 프레임을 읽을 수 없습니다.")
         return
 
-    bbox = initial_bbox  # 기본값으로 초기 바운딩 박스 설정
+    bbox = initial_bbox
     try:
         yolo_bbox = detect_ball_with_yolo(first_frame, net, output_layers, classes)
         if yolo_bbox is not None:
@@ -1055,8 +1060,6 @@ def process_video(video_path, initial_bbox, pixels_per_meter, mass, height_refer
         st.error(f"YOLO 검출 중 오류 발생: {str(e)}")
         st.info("수동 설정된 위치를 사용합니다.")
 
-    st.write(f"초기 바운딩 박스: {bbox}")
-    
     # 트래커 초기화
     try:
         init_success = tracker.init(first_frame, bbox)
@@ -1072,9 +1075,6 @@ def process_video(video_path, initial_bbox, pixels_per_meter, mass, height_refer
     prev_pos = None
     speed_queue = deque(maxlen=5)
     speeds = []
-    kinetic_energies = []
-    potential_energies = []
-    mechanical_energies = []
     frames = []
 
     # Streamlit 디스플레이 요소
@@ -1082,7 +1082,6 @@ def process_video(video_path, initial_bbox, pixels_per_meter, mass, height_refer
     status_text = st.empty()
     video_frame = st.empty()
     speed_chart = st.empty()
-    energy_chart = st.empty()
 
     frame_count = 0
     total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -1106,41 +1105,34 @@ def process_video(video_path, initial_bbox, pixels_per_meter, mass, height_refer
                 time.sleep(frame_interval - elapsed)
             last_frame_time = time.time()
             
+            # 프레임 크기 조정 (영상 크기 축소)
+            frame = cv2.resize(frame, (640, 360))
+            
             # 프레임 처리
             frame, center, bbox = track_ball(frame, tracker, bbox, lower_color, upper_color, 10, 50)
             
-            if center:
-                if prev_pos:
-                    speed = calculate_speed(prev_pos, center, fps, pixels_per_meter)
-                    speed_queue.append(speed)
-                    avg_speed = sum(speed_queue) / len(speed_queue)
-                    
-                    h = (height_reference[1] - center[1]) / pixels_per_meter
-                    ke, pe, me = calculate_energy(avg_speed, h, mass)
-                    
-                    # 속도 표시
-                    cv2.putText(frame, f"Speed: {avg_speed*3.6:.2f} km/h", (10, 30),
-                              cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                    
-                    # 데이터 저장
-                    speeds.append(avg_speed*3.6)
-                    kinetic_energies.append(ke)
-                    potential_energies.append(pe)
-                    mechanical_energies.append(me)
-                    frames.append(frame_count)
+            if center and prev_pos:
+                speed = calculate_speed(prev_pos, center, fps, pixels_per_meter)
+                speed_queue.append(speed)
+                avg_speed = sum(speed_queue) / len(speed_queue)
                 
+                # 속도 표시
+                cv2.putText(frame, f"Speed: {avg_speed*3.6:.2f} km/h", (10, 30),
+                          cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                
+                # 데이터 저장
+                speeds.append(avg_speed*3.6)
+                frames.append(frame_count)
+            
+            if center:
                 prev_pos = center
-
-            # 기준선 표시
-            cv2.line(frame, (0, height_reference[1]), (width, height_reference[1]), (255, 0, 0), 2)
             
-            # 프레임 표시 (프레임 건너뛰기 없이)
-            video_frame.image(frame, channels="BGR", use_column_width=True)
+            # 프레임 표시
+            video_frame.image(frame, channels="BGR", use_column_width=False)
             
-            # 차트 업데이트 (더 자주 업데이트)
-            if frame_count % 5 == 0 and frames:  # 5프레임마다 업데이트
-                update_charts(frames, speeds, kinetic_energies, potential_energies, 
-                            mechanical_energies, speed_chart, energy_chart, frame_count)
+            # 차트 업데이트
+            if frame_count % 5 == 0 and frames:
+                update_charts(frames, speeds, speed_chart, frame_count, graph_color)
 
         except Exception as e:
             st.error(f"프레임 {frame_count} 처리 중 오류 발생: {str(e)}")
@@ -1152,14 +1144,12 @@ def process_video(video_path, initial_bbox, pixels_per_meter, mass, height_refer
         status_text.text(f"처리 중: {frame_count}/{total_frames} 프레임 ({progress}%)")
 
     video.release()
-    status_text.text("Video processing completed!")
+    status_text.text("영상 처리가 완료되었습니다!")
     
     # 최종 결과 표시
     if speeds:
         st.write(f"평균 속도: {np.mean(speeds):.2f} km/h")
         st.write(f"최대 속도: {np.max(speeds):.2f} km/h")
-        st.write(f"최대 운동에너지: {np.max(kinetic_energies):.2f} J")
-        st.write(f"최대 위치에너지: {np.max(potential_energies):.2f} J")
 
 def process_uploaded_video(uploaded_file, net, output_layers, classes):
     """업로드된 비디오 처리"""
@@ -1175,8 +1165,18 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
     video.release()
     
     if ret:
-        st.video(tfile.name)
+        # 비디오 크기 조정
+        first_frame = cv2.resize(first_frame, (640, 360))
+        st.video(tfile.name, start_time=0)
+        
         height, width = first_frame.shape[:2]
+        
+        # 그래프 색상 선택
+        graph_color = st.radio(
+            "그래프 색상을 선택하세요:",
+            ('white', 'black'),
+            key='graph_color'
+        )
         
         # 색상 선택
         selected_color, lower_color, upper_color, click_pos = select_color_from_image(first_frame)
@@ -1185,10 +1185,12 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
                 'selected_color': selected_color,
                 'lower_color': lower_color,
                 'upper_color': upper_color,
-                'click_pos': click_pos
+                'click_pos': click_pos,
+                'graph_color': graph_color
             })
         
-            if all(k in st.session_state.video_settings for k in ['selected_color', 'lower_color', 'upper_color', 'click_pos']):
+            if all(k in st.session_state.video_settings for k in 
+                  ['selected_color', 'lower_color', 'upper_color', 'click_pos']):
                 # 거리 측정을 위한 점 선택
                 settings_col1, settings_col2 = st.columns(2)
                 
@@ -1208,24 +1210,11 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
                         st.session_state.video_settings.get('y2', height // 2),
                         key='y2_slider')
 
-                # 높이 기준점 선택
-                height_reference_y = st.slider('높이 기준점 Y 좌표', 0, height, 
-                    st.session_state.video_settings.get('height_reference_y', height),
-                    key='height_ref_slider')
-                height_reference = (0, height_reference_y)
-
-                # 설정값 저장
-                st.session_state.video_settings.update({
-                    'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
-                    'height_reference_y': height_reference_y
-                })
-
                 # 프레임에 정보 표시
                 frame_with_info = first_frame.copy()
                 cv2.circle(frame_with_info, (x1, y1), 5, (0, 255, 0), -1)
                 cv2.circle(frame_with_info, (x2, y2), 5, (0, 255, 0), -1)
                 cv2.line(frame_with_info, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.line(frame_with_info, (0, height_reference_y), (width, height_reference_y), (255, 0, 0), 2)
 
                 # 선택한 색상 위치 표시
                 click_x, click_y = st.session_state.video_settings['click_pos']
@@ -1240,24 +1229,17 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
                              (bbox_x + bbox_w, bbox_y + bbox_h), (0, 255, 255), 2)
                 cv2.circle(frame_with_info, (click_x, click_y), 5, tuple(map(int, selected_color)), -1)
 
-                st.image(frame_with_info, channels="BGR", use_column_width=True)
+                st.image(frame_with_info, channels="BGR", use_column_width=False)
 
                 # 실제 거리 입력
                 real_distance = st.number_input("선택한 두 점 사이의 실제 거리(미터)를 입력해주세요:", 
                     min_value=0.1, 
                     value=st.session_state.video_settings.get('real_distance', 1.0), 
                     step=0.1)
-                
-                # 공의 질량 입력
-                mass = st.number_input("공의 질량(kg)을 입력해주세요:", 
-                    min_value=0.1, 
-                    value=st.session_state.video_settings.get('mass', 0.1), 
-                    step=0.1)
 
                 # 설정값 저장
                 st.session_state.video_settings.update({
-                    'real_distance': real_distance,
-                    'mass': mass
+                    'real_distance': real_distance
                 })
 
                 # pixels_per_meter 계산
@@ -1266,14 +1248,15 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
                 st.write(f"계산된 pixels_per_meter: {pixels_per_meter:.2f}")
 
                 # 분석 시작 버튼
-                if st.button('영상 내 공 추적 및 에너지 분석 시작하기'):
+                if st.button('영상 내 공 추적 및 분석 시작하기'):
                     initial_bbox = (bbox_x, bbox_y, bbox_w, bbox_h)
                     st.write("Processing video...")
                     try:
-                        process_video(tfile.name, initial_bbox, pixels_per_meter, mass, height_reference, 
-                                     net, output_layers, classes, 
-                                     st.session_state.video_settings['lower_color'],
-                                     st.session_state.video_settings['upper_color'])
+                        process_video(tfile.name, initial_bbox, pixels_per_meter, 
+                                   net, output_layers, classes, 
+                                   st.session_state.video_settings['lower_color'],
+                                   st.session_state.video_settings['upper_color'],
+                                   st.session_state.video_settings['graph_color'])
                     except Exception as e:
                         st.error(f"비디오 처리 중 오류 발생: {str(e)}")
                         st.error(traceback.format_exc())
@@ -1286,7 +1269,6 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
             pass
     else:
         st.error("Failed to read the first frame of the video.")
-
 
 def main():
     """메인 실행 함수"""
