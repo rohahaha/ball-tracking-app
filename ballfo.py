@@ -12,7 +12,6 @@ import gdown
 import traceback
 import urllib.request
 import time
-import base64 
 
 # Streamlit 페이지 설정 (반드시 다른 st 명령어보다 먼저 와야 함)
 st.set_page_config(
