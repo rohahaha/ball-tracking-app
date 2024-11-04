@@ -1297,11 +1297,10 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
     video.release()
     
     if ret:
-        # 비디오 크기 조정
-        first_frame = cv2.resize(first_frame, (640, 360))
-        st.video(tfile.name, start_time=0)
-        
-        height, width = first_frame.shape[:2]
+        # 비디오 표시를 DIV로 감싸기
+        st.markdown('<div style="width: 384px">', unsafe_allow_html=True)
+        st.video(tfile.name)
+        st.markdown('</div>', unsafe_allow_html=True)
         
         # 그래프 색상 선택
         graph_color = st.radio(
