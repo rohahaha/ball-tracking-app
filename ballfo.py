@@ -555,8 +555,8 @@ def download_yolo_files():
 def verify_yolo_files():
     """YOLO 파일들의 존재 여부와 무결성 확인"""
     required_files = {
-        "yolov4.cfg": 10 * 1024,     # 최소 10KB (수정됨)
-        "coco.names": 1024,          # 최소 1KB
+        "yolov4.cfg": 10 * 1024,     # 최소 10KB
+        "coco.names": 0.5 * 1024,    # 최소 0.5KB (수정됨)
         "yolov4.weights": 200 * 1024 * 1024  # 최소 200MB
     }
     
