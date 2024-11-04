@@ -1193,8 +1193,8 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 time.sleep(frame_interval - elapsed)
             last_frame_time = time.time()
             
-            # 프레임 크기 조정 (384px로)
-            frame = resize_frame(frame)
+           # 프레임 크기 조정
+            frame = cv2.resize(frame, (384, int(360 * (384/640))))  # 비율 유지하면서 크기 조정
             
             # 프레임 처리
             frame, center, bbox = track_ball(frame, tracker, bbox, lower_color, upper_color, 10, 50)
@@ -1296,11 +1296,12 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
     ret, first_frame = video.read()
     video.release()
     
-    if ret:
-        # 비디오 표시를 DIV로 감싸기
-        st.markdown('<div style="width: 384px">', unsafe_allow_html=True)
-        st.video(tfile.name)
-        st.markdown('</div>', unsafe_allow_html=True)
+   if ret:
+        # 첫 프레임 크기 조정
+        first_frame = cv2.resize(first_frame, (384, int(360 * (384/640))))
+        st.video(tfile.name)  # 기본 video 표시 사용
+        
+        height, width = first_frame.shape[:2]
         
         # 그래프 색상 선택
         graph_color = st.radio(
