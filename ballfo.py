@@ -842,29 +842,77 @@ def rgb_to_hsv(r, g, b):
     h, s, v = colorsys.rgb_to_hsv(r, g, b)
     return int(h * 179), int(s * 255), int(v * 255)
 
-def update_charts(frames, speeds, speed_chart, frame_count, graph_color):
+def update_charts(frames, speeds, speed_chart, frame_count, graph_color, is_final=False):
     """차트 업데이트"""
     color = 'white' if graph_color == 'white' else 'black'
     
+    # 실시간 또는 최종 그래프 생성
+    data = speeds if is_final else speeds[-100:]
+    x_data = frames if is_final else frames[-100:]
+    
     speed_fig = go.Figure(go.Scatter(
-        x=frames[-100:], 
-        y=speeds[-100:], 
+        x=x_data, 
+        y=data, 
         mode='lines', 
         name='Speed (km/h)',
         line=dict(color=color)
     ))
     
+    # 그래프 레이아웃 설정
     speed_fig.update_layout(
-        title="Speed over time (last 100 frames)",
+        title="Ball Speed Analysis" if is_final else "Real-time Speed",
         xaxis_title="Frame",
         yaxis_title="Speed (km/h)",
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
-        font=dict(color=color)
+        font=dict(color=color),
+        showlegend=True,
+        height=400 if is_final else 300,
+        margin=dict(l=50, r=50, t=50, b=50)
     )
     
+    # 인터랙티브 기능 추가 (최종 그래프의 경우)
+    if is_final:
+        speed_fig.update_layout(
+            hovermode='x unified',
+            hoverlabel=dict(
+                bgcolor="white",
+                font_size=12,
+                font_family="Arial"
+            )
+        )
+        
+        # 이동 평균선 추가
+        window = 10  # 이동 평균 윈도우 크기
+        moving_avg = pd.Series(data).rolling(window=window).mean()
+        speed_fig.add_trace(go.Scatter(
+            x=x_data,
+            y=moving_avg,
+            mode='lines',
+            name=f'{window}-frame Moving Average',
+            line=dict(color='red', dash='dash')
+        ))
+        
+        # 통계 정보 추가
+        avg_speed = np.mean(data)
+        max_speed = np.max(data)
+        speed_fig.add_hline(
+            y=avg_speed,
+            line_dash="dot",
+            line_color="green",
+            annotation_text=f"Average: {avg_speed:.1f} km/h",
+            annotation_position="right"
+        )
+        speed_fig.add_hline(
+            y=max_speed,
+            line_dash="dot",
+            line_color="red",
+            annotation_text=f"Max: {max_speed:.1f} km/h",
+            annotation_position="right"
+        )
+    
     speed_chart.plotly_chart(speed_fig, use_container_width=True, 
-                           key=f"speed_chart_{frame_count}")
+                           key=f"speed_chart_{frame_count}{'_final' if is_final else ''}")
 
 
 def select_color_from_image(frame):
@@ -1037,56 +1085,38 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    # 트래커 초기화
+    # Streamlit 레이아웃 설정
+    col1, col2 = st.columns([2, 1])  # 2:1 비율로 칼럼 분할
+    
+    with col1:
+        video_frame = st.empty()  # 비디오 프레임
+    
+    with col2:
+        real_time_speed = st.empty()  # 실시간 속도 표시
+        speed_chart = st.empty()  # 실시간 속도 그래프
+
+    # 전체 분석 결과를 위한 컨테이너
+    analysis_container = st.container()
+
+    # 트래커 초기화 및 기타 설정
     tracker = create_stable_tracker()
     if tracker is None:
         st.error("트래커를 생성할 수 없습니다. 프로그램을 종료합니다.")
         return
 
-    # YOLO로 첫 프레임에서 공 탐지
-    ret, first_frame = video.read()
-    if not ret:
-        st.error("비디오 첫 프레임을 읽을 수 없습니다.")
-        return
-
-    bbox = initial_bbox
-    try:
-        yolo_bbox = detect_ball_with_yolo(first_frame, net, output_layers, classes)
-        if yolo_bbox is not None:
-            bbox = yolo_bbox
-        else:
-            st.info("YOLO 검출 실패, 수동 설정된 위치를 사용합니다.")
-    except Exception as e:
-        st.error(f"YOLO 검출 중 오류 발생: {str(e)}")
-        st.info("수동 설정된 위치를 사용합니다.")
-
-    # 트래커 초기화
-    try:
-        init_success = tracker.init(first_frame, bbox)
-        if init_success:
-            st.success("트래커가 성공적으로 초기화되었습니다!")
-        else:
-            st.warning("트래커 초기화 실패, 단순 추적으로 계속합니다.")
-    except Exception as e:
-        st.error(f"트래커 초기화 중 오류 발생: {str(e)}")
-        st.info("단순 추적으로 전환합니다.")
-
-    # 분석 변수 초기화
+    # 변수 초기화
     prev_pos = None
     speed_queue = deque(maxlen=5)
     speeds = []
     frames = []
-
-    # Streamlit 디스플레이 요소
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    video_frame = st.empty()
-    speed_chart = st.empty()
-
     frame_count = 0
     total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
     
-    # FPS 제어를 위한 시간 간격 계산
+    # 진행 상태 표시
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    # FPS 제어
     frame_interval = 1.0 / fps
     last_frame_time = time.time()
 
@@ -1105,7 +1135,7 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 time.sleep(frame_interval - elapsed)
             last_frame_time = time.time()
             
-            # 프레임 크기 조정 (영상 크기 축소)
+            # 프레임 크기 조정
             frame = cv2.resize(frame, (640, 360))
             
             # 프레임 처리
@@ -1116,21 +1146,24 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 speed_queue.append(speed)
                 avg_speed = sum(speed_queue) / len(speed_queue)
                 
-                # 속도 표시
-                cv2.putText(frame, f"Speed: {avg_speed*3.6:.2f} km/h", (10, 30),
-                          cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                
-                # 데이터 저장
+                # 속도 데이터 저장
                 speeds.append(avg_speed*3.6)
                 frames.append(frame_count)
+                
+                # 실시간 속도 표시
+                real_time_speed.markdown(f"### Current Speed\n{avg_speed*3.6:.1f} km/h")
+                
+                # 프레임에 속도 표시
+                cv2.putText(frame, f"Speed: {avg_speed*3.6:.1f} km/h", 
+                          (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
             
             if center:
                 prev_pos = center
             
-            # 프레임 표시
-            video_frame.image(frame, channels="BGR", use_column_width=False)
+            # 비디오 프레임 표시
+            video_frame.image(frame, channels="BGR", use_column_width=True)
             
-            # 차트 업데이트
+            # 실시간 그래프 업데이트
             if frame_count % 5 == 0 and frames:
                 update_charts(frames, speeds, speed_chart, frame_count, graph_color)
 
@@ -1138,6 +1171,7 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
             st.error(f"프레임 {frame_count} 처리 중 오류 발생: {str(e)}")
             st.error(traceback.format_exc())
 
+        # 진행률 업데이트
         frame_count += 1
         progress = int((frame_count / total_frames) * 100)
         progress_bar.progress(progress)
@@ -1145,12 +1179,39 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
 
     video.release()
     status_text.text("영상 처리가 완료되었습니다!")
-    
-    # 최종 결과 표시
-    if speeds:
-        st.write(f"평균 속도: {np.mean(speeds):.2f} km/h")
-        st.write(f"최대 속도: {np.max(speeds):.2f} km/h")
 
+    # 분석 결과 표시
+    with analysis_container:
+        st.markdown("## 분석 결과")
+        
+        # 기본 통계
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("평균 속도", f"{np.mean(speeds):.1f} km/h")
+        with col2:
+            st.metric("최대 속도", f"{np.max(speeds):.1f} km/h")
+        with col3:
+            st.metric("최소 속도", f"{np.min(speeds):.1f} km/h")
+        
+        # 전체 속도 그래프
+        st.markdown("### 전체 속도 분석 그래프")
+        final_speed_chart = st.empty()
+        update_charts(frames, speeds, final_speed_chart, frame_count, graph_color, is_final=True)
+        
+        # 데이터 다운로드 옵션
+        df = pd.DataFrame({
+            'Frame': frames,
+            'Speed (km/h)': speeds
+        })
+        
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            "속도 데이터 다운로드 (CSV)",
+            csv,
+            "ball_speed_data.csv",
+            "text/csv",
+            key='download-csv'
+        )
 def process_uploaded_video(uploaded_file, net, output_layers, classes):
     """업로드된 비디오 처리"""
     if 'video_settings' not in st.session_state:
