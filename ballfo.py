@@ -890,6 +890,54 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
         speed_chart.plotly_chart(speed_fig, use_container_width=True, 
                                key=f"speed_chart_{frame_count}")
 
+def show_analysis_results():
+    """분석 결과 표시"""
+    if 'analysis_data' not in st.session_state:
+        return
+    
+    data = st.session_state['analysis_data']
+    speeds = data['speeds']
+    
+    # 기본 통계
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("평균 속도", f"{np.mean(speeds):.1f} km/h")
+    with col2:
+        st.metric("최대 속도", f"{np.max(speeds):.1f} km/h")
+    with col3:
+        st.metric("최소 속도", f"{np.min(speeds):.1f} km/h")
+
+    # 전체 속도 그래프
+    st.markdown("### 전체 속도 분석 그래프")
+    final_speed_chart = st.empty()
+    
+    # 최종 그래프 업데이트
+    update_charts(
+        data['frames'], 
+        speeds, 
+        final_speed_chart, 
+        len(speeds), 
+        data['graph_color'], 
+        data['trend_color'], 
+        is_final=True,
+        frame_images=data['key_frames'],
+        ball_positions=data['ball_positions']
+    )
+    
+    # 데이터 다운로드 옵션
+    df = pd.DataFrame({
+        'Frame': data['frames'],
+        'Speed (km/h)': speeds
+    })
+    
+    csv = df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        "속도 데이터 다운로드 (CSV)",
+        csv,
+        "ball_speed_data.csv",
+        "text/csv",
+        key='download-csv'
+    )
 
 def select_color_from_image(frame):
     """이미지에서 클릭으로 색상 선택"""
