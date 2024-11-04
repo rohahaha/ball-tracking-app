@@ -505,18 +505,16 @@ def save_yolov4_cfg():
             os.remove(cfg_path)
         return False
 
-# YOLO 파일 다운로드 함수 수정
 def download_yolo_files():
     """YOLO 모델 파일 다운로드"""
     try:
         os.makedirs(YOLO_DIR, exist_ok=True)
         
-        # YOLOv4 cfg 파일 생성
+        # YOLOv4 cfg 파일 다운로드
         if not os.path.exists(os.path.join(YOLO_DIR, "yolov4.cfg")):
             st.info("Creating YOLOv4 configuration file...")
             if not save_yolov4_cfg():
                 return False
-            st.success("Created YOLOv4 configuration file")
         
         # coco.names 파일 다운로드
         names_path = os.path.join(YOLO_DIR, "coco.names")
@@ -557,6 +555,7 @@ def download_yolo_files():
                         os.remove(weights_path)
                     return False
         
+        # 모든 파일 검증
         return verify_yolo_files()
     
     except Exception as e:
