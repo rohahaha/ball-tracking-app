@@ -1135,11 +1135,13 @@ def resize_frame(frame, target_width=384):
 
 
 def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers, 
-                 classes, lower_color, upper_color, graph_color):
+                 classes, lower_color, upper_color, graph_color, trend_color):
     """비디오 처리 및 분석"""
     video = cv2.VideoCapture(video_path)
     fps = video.get(cv2.CAP_PROP_FPS)
-    
+    width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
     # Streamlit 레이아웃 설정
     col1, col2 = st.columns([2, 1])
     
@@ -1236,26 +1238,21 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 speed_queue.append(speed)
                 avg_speed = sum(speed_queue) / len(speed_queue)
                 
-                # 속도 데이터 저장
                 speeds.append(avg_speed*3.6)
                 frames.append(frame_count)
                 
-                # 실시간 속도 표시
                 real_time_speed.markdown(f"### Current Speed\n{avg_speed*3.6:.1f} km/h")
                 
-                # 프레임에 속도 표시
                 cv2.putText(frame, f"Speed: {avg_speed*3.6:.1f} km/h", 
                           (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
             
             if center:
                 prev_pos = center
             
-            # 비디오 프레임 표시
             video_frame.image(frame, channels="BGR", use_column_width=False)
             
-            # 실시간 그래프 업데이트
-            if frame_count % 5 == 0 and frames:
-                update_charts(frames, speeds, speed_chart, frame_count, graph_color)
+            if frame_count % 5 == 0 and frames:  # trend_color 인자 추가
+                update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_color)
 
         except Exception as e:
             st.error(f"프레임 {frame_count} 처리 중 오류 발생: {str(e)}")
@@ -1263,7 +1260,6 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
             if 'bbox' not in locals():
                 bbox = initial_bbox
 
-        # 진행률 업데이트
         frame_count += 1
         progress = int((frame_count / total_frames) * 100)
         progress_bar.progress(progress)
@@ -1285,11 +1281,11 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 st.metric("최대 속도", f"{np.max(speeds):.1f} km/h")
             with col3:
                 st.metric("최소 속도", f"{np.min(speeds):.1f} km/h")
-            
+
             # 전체 속도 그래프
             st.markdown("### 전체 속도 분석 그래프")
             final_speed_chart = st.empty()
-            update_charts(frames, speeds, final_speed_chart, frame_count, graph_color, is_final=True)
+            update_charts(frames, speeds, final_speed_chart, frame_count, graph_color, trend_color, is_final=True)
             
             # 데이터 다운로드 옵션
             df = pd.DataFrame({
