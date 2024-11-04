@@ -1296,28 +1296,31 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
 
 def process_uploaded_video(uploaded_file, net, output_layers, classes):
     """업로드된 비디오 처리"""
-    if 'video_settings' not in st.session_state:
-        st.session_state.video_settings = {}
+    try:
+        if 'video_settings' not in st.session_state:
+            st.session_state.video_settings = {}
 
-    tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-    tfile.write(uploaded_file.read())
-    tfile.close()
-    
-    video = cv2.VideoCapture(tfile.name)
-    ret, first_frame = video.read()
-    video.release()
-    
-    if ret:
-        try:
-            # 첫 프레임 크기 조정
-            first_frame = resize_frame(first_frame)
-            if first_frame is None:
-                st.error("프레임 처리 실패")
-                return
-                
-            st.video(tfile.name)  # 원본 비디오 표시
+        tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+        tfile.write(uploaded_file.read())
+        tfile.close()
+        
+        video = cv2.VideoCapture(tfile.name)
+        ret, first_frame = video.read()
+        video.release()
+        
+        if not ret or first_frame is None:
+            st.error("비디오 프레임을 읽을 수 없습니다.")
+            return
             
-            height, width = first_frame.shape[:2]
+        # 첫 프레임 크기 조정
+        first_frame = resize_frame(first_frame)
+        if first_frame is None:
+            st.error("프레임 처리 실패")
+            return
+            
+        st.video(tfile.name)
+        
+        height, width = first_frame.shape[:2]
         
         # 그래프 색상 선택
         graph_color = st.radio(
@@ -1399,25 +1402,23 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
                 if st.button('영상 내 공 추적 및 분석 시작하기'):
                     initial_bbox = (bbox_x, bbox_y, bbox_w, bbox_h)
                     st.write("Processing video...")
-                    try:
-                        process_video(tfile.name, initial_bbox, pixels_per_meter, 
-                                   net, output_layers, classes, 
-                                   st.session_state.video_settings['lower_color'],
-                                   st.session_state.video_settings['upper_color'],
-                                   st.session_state.video_settings['graph_color'])
-                    except Exception as e:
-                        st.error(f"비디오 처리 중 오류 발생: {str(e)}")
-                        st.error(traceback.format_exc())
-        else:
-            st.warning("색상을 선택해주세요.")
+                    process_video(tfile.name, initial_bbox, pixels_per_meter, 
+                               net, output_layers, classes, 
+                               st.session_state.video_settings['lower_color'],
+                               st.session_state.video_settings['upper_color'],
+                               st.session_state.video_settings['graph_color'])
+            else:
+                st.warning("색상을 선택해주세요.")
 
         try:
             os.unlink(tfile.name)
         except PermissionError:
             pass
-    else:
-        st.error("Failed to read the first frame of the video.")
-
+            
+    except Exception as e:
+        st.error(f"비디오 처리 중 오류 발생: {str(e)}")
+        st.error(traceback.format_exc())
+        
 def main():
     """메인 실행 함수"""
     st.write(f"OpenCV 버전: {cv2.__version__}")
