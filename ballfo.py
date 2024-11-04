@@ -1126,15 +1126,14 @@ def detect_ball_with_yolo(frame, net, output_layers, classes):
                         continue
 
         if best_box is not None:
-            st.success(f"공이 감지되었습니다. (신뢰도: {best_confidence:.2f})")
+            st.success(f"YOLO가 공을 감지했습니다! (신뢰도: {best_confidence:.2f})")
             return best_box
-        else:
-            st.warning("공을 감지하지 못했습니다.")
-            return None
+        return None  # 경고 메시지 제거
             
     except Exception as e:
-        st.error(f"공 검출 중 오류 발생: {str(e)}")
+        st.error(f"YOLO 감지 중 오류 발생: {str(e)}")
         return None
+        
 
 def resize_frame(frame, target_width=384):
     """영상의 종횡비를 유지하면서 안전하게 크기 조정"""
@@ -1215,9 +1214,9 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
         yolo_bbox = detect_ball_with_yolo(first_frame, net, output_layers, classes)
         if yolo_bbox is not None:
             bbox = yolo_bbox
-            st.success("YOLO로 공을 성공적으로 검출했습니다.")
+        # 경고 메시지 제거
     except Exception as e:
-        st.warning(f"YOLO 검출 중 오류 발생: {str(e)}")
+        st.warning(f"YOLO 검출 중 오류가 발생했지만, 색상 기반 추적을 계속합니다.")
 
     # 트래커 초기화
     try:
