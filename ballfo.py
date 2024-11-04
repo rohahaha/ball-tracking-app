@@ -590,63 +590,6 @@ def verify_yolo_files():
         st.error(f"Error during file verification: {str(e)}")
         return False
 
-def download_yolo_files():
-    """YOLO 모델 파일 다운로드"""
-    try:
-        os.makedirs(YOLO_DIR, exist_ok=True)
-        
-        # YOLOv4 cfg 파일 다운로드
-        if not os.path.exists(os.path.join(YOLO_DIR, "yolov4.cfg")):
-            st.info("Creating YOLOv4 configuration file...")
-            if not save_yolov4_cfg():
-                return False
-        
-        # coco.names 파일 다운로드
-        names_path = os.path.join(YOLO_DIR, "coco.names")
-        if not os.path.exists(names_path):
-            st.info("Downloading coco.names...")
-            try:
-                urllib.request.urlretrieve(YOLO_FILES["coco.names"], names_path)
-                st.success("Downloaded coco.names")
-            except Exception as e:
-                st.error(f"Error downloading coco.names: {str(e)}")
-                return False
-        
-        # weights 파일 다운로드
-        weights_path = os.path.join(YOLO_DIR, WEIGHTS_FILENAME)
-        if not os.path.exists(weights_path):
-            with st.spinner("Downloading YOLOv4 weights from Google Drive... This may take a few minutes..."):
-                try:
-                    output = gdown.download(
-                        f"https://drive.google.com/uc?id={WEIGHTS_FILE_ID}",
-                        weights_path,
-                        quiet=False
-                    )
-                    if output is not None and os.path.exists(weights_path):
-                        file_size = os.path.getsize(weights_path) / (1024 * 1024)  # MB로 변환
-                        if file_size > 200:  # 최소 200MB
-                            st.success(f"Successfully downloaded YOLOv4 weights! (File size: {file_size:.1f} MB)")
-                        else:
-                            st.error("Downloaded weights file appears to be incomplete")
-                            if os.path.exists(weights_path):
-                                os.remove(weights_path)
-                            return False
-                    else:
-                        st.error("Failed to download weights file")
-                        return False
-                except Exception as e:
-                    st.error(f"Error downloading weights file: {str(e)}")
-                    if os.path.exists(weights_path):
-                        os.remove(weights_path)
-                    return False
-        
-        # 모든 파일 검증
-        return verify_yolo_files()
-    
-    except Exception as e:
-        st.error(f"Error in download process: {str(e)}")
-        return False
-
 def initialize_yolo():
     """YOLO 모델 초기화"""
     try:
