@@ -857,34 +857,54 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
             annotation_position="right"
         )
 
-        # 최종 그래프에서만 클릭 이벤트 처리
-        selected_points = plotly_events(speed_fig, click_event=True, hover_event=False)
+        # 그래프 표시
+        st.plotly_chart(speed_fig, use_container_width=True)
         
-        if selected_points:
-            point = selected_points[0]
-            frame_idx = int(point['x'])
-            
-            if frame_idx in frame_images:
-                st.markdown("### 선택한 프레임 분석")
-                col1, col2 = st.columns(2)
+        # 프레임 선택을 위한 슬라이더 추가
+        if frame_images:
+            st.markdown("### 프레임 분석")
+            # 10프레임 단위로 선택 가능하도록 설정
+            available_frames = sorted(list(frame_images.keys()))
+            if available_frames:
+                selected_frame = st.slider(
+                    "분석할 프레임 선택", 
+                    min_value=min(available_frames),
+                    max_value=max(available_frames),
+                    value=min(available_frames),
+                    step=10
+                )
                 
-                with col1:
-                    st.markdown(f"#### Frame {frame_idx}")
-                    st.image(frame_images[frame_idx], channels="BGR", 
-                            caption=f"Speed: {speeds[frames.index(frame_idx)]:.1f} km/h")
-                
-                with col2:
-                    st.markdown("#### 공의 궤적")
-                    trajectory_img = frame_images[frame_idx].copy()
+                if selected_frame in frame_images:
+                    col1, col2 = st.columns(2)
                     
-                    for i in range(max(0, frame_idx-5), min(frame_idx+6, max(frames)+1)):
-                        if i in ball_positions:
-                            pos = ball_positions[i]
-                            color = (0, 255, 0) if i < frame_idx else (0, 0, 255) if i > frame_idx else (255, 0, 0)
-                            cv2.circle(trajectory_img, pos, 3, color, -1)
+                    with col1:
+                        st.markdown(f"#### Frame {selected_frame}")
+                        st.image(frame_images[selected_frame], channels="BGR", 
+                                caption=f"Speed: {speeds[frames.index(selected_frame)]:.1f} km/h")
                     
-                    st.image(trajectory_img, channels="BGR", 
-                            caption="Green: Past, Red: Current, Blue: Future")
+                    with col2:
+                        st.markdown("#### 공의 궤적")
+                        trajectory_img = frame_images[selected_frame].copy()
+                        
+                        # 이전 5개와 이후 5개 프레임의 궤적 표시
+                        for i in range(max(0, selected_frame-5), min(selected_frame+6, max(frames)+1)):
+                            if i in ball_positions:
+                                pos = ball_positions[i]
+                                color = (0, 255, 0) if i < selected_frame else\
+                                       (0, 0, 255) if i > selected_frame else\
+                                       (255, 0, 0)
+                                cv2.circle(trajectory_img, pos, 3, color, -1)
+                        
+                        st.image(trajectory_img, channels="BGR", 
+                                caption="Green: Past, Red: Current, Blue: Future")
+                        
+                        # 현재 프레임의 상세 정보
+                        st.markdown("#### 상세 정보")
+                        st.write(f"- 프레임 번호: {selected_frame}")
+                        st.write(f"- 순간 속도: {speeds[frames.index(selected_frame)]:.1f} km/h")
+                        if selected_frame in ball_positions:
+                            x, y = ball_positions[selected_frame]
+                            st.write(f"- 공의 위치: ({x}, {y})")
     else:
         # 실시간 업데이트에서는 단순히 그래프만 표시
         speed_chart.plotly_chart(speed_fig, use_container_width=True, 
