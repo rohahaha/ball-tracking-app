@@ -26,6 +26,19 @@ st.set_page_config(
     }
 )
 
+# 앱 시작 부분에 CSS 추가
+st.markdown("""
+    <style>
+        .stVideo {
+            width: 384px !important;
+        }
+        .stVideo video {
+            width: 100% !important;
+            height: auto !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
 # 앱 제목
 st.title('공 추적 및 에너지 분석기')
 
@@ -1079,6 +1092,13 @@ def detect_ball_with_yolo(frame, net, output_layers, classes):
         st.error(f"공 검출 중 오류 발생: {str(e)}")
         return None
 
+def resize_frame(frame, target_width=384):  # 640 * 0.6 = 384로 변경
+    """영상의 종횡비를 유지하면서 크기 조정"""
+    height, width = frame.shape[:2]
+    aspect_ratio = width / height
+    target_height = int(target_width / aspect_ratio)
+    return cv2.resize(frame, (target_width, target_height))
+
 def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers, 
                  classes, lower_color, upper_color, graph_color):
     """비디오 처리 및 분석"""
@@ -1086,6 +1106,13 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     fps = video.get(cv2.CAP_PROP_FPS)
     width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    # scale_ratio 계산 (384/원본 너비)
+    scale_ratio = 384 / width
+    
+    # bbox 크기 조정
+    if initial_bbox:
+        initial_bbox = tuple(int(x * scale_ratio) for x in initial_bbox)
 
     # Streamlit 레이아웃 설정
     col1, col2 = st.columns([2, 1])
@@ -1096,7 +1123,6 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     with col2:
         real_time_speed = st.empty()
         speed_chart = st.empty()
-
     analysis_container = st.container()
 
     # 트래커 초기화
@@ -1159,7 +1185,7 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     # 첫 프레임 다시 처리
     video.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
-    while True:
+   while True:
         ret, frame = video.read()
         if not ret:
             break
@@ -1172,14 +1198,20 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 time.sleep(frame_interval - elapsed)
             last_frame_time = time.time()
             
-            # 프레임 크기 조정
-            frame = cv2.resize(frame, (640, 360))
+            # 프레임 크기 조정 (384px로)
+            frame = resize_frame(frame)
             
             # 프레임 처리
             frame, center, bbox = track_ball(frame, tracker, bbox, lower_color, upper_color, 10, 50)
             
             if center and prev_pos:
-                speed = calculate_speed(prev_pos, center, fps, pixels_per_meter)
+                # 속도 계산 시 스케일 비율 고려
+                speed = calculate_speed(
+                    (prev_pos[0] / scale_ratio, prev_pos[1] / scale_ratio),
+                    (center[0] / scale_ratio, center[1] / scale_ratio),
+                    fps, 
+                    pixels_per_meter
+                )
                 speed_queue.append(speed)
                 avg_speed = sum(speed_queue) / len(speed_queue)
                 
@@ -1197,13 +1229,13 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
             if center:
                 prev_pos = center
             
-            # 비디오 프레임 표시
-            video_frame.image(frame, channels="BGR", use_column_width=True)
+            # 비디오 프레임 표시 (크기 고정)
+            video_frame.image(frame, channels="BGR", use_column_width=False)
             
             # 실시간 그래프 업데이트
             if frame_count % 5 == 0 and frames:
                 update_charts(frames, speeds, speed_chart, frame_count, graph_color)
-
+                
         except Exception as e:
             st.error(f"프레임 {frame_count} 처리 중 오류 발생: {str(e)}")
             st.error(traceback.format_exc())
