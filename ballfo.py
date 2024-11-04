@@ -1283,7 +1283,7 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
     ret, first_frame = video.read()
     video.release()
     
-   if ret:
+    if ret:
         # 첫 프레임 크기 조정
         first_frame = cv2.resize(first_frame, (384, int(360 * (384/640))))
         st.video(tfile.name)  # 기본 video 표시 사용
