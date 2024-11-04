@@ -1086,23 +1086,55 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     # Streamlit 레이아웃 설정
-    col1, col2 = st.columns([2, 1])  # 2:1 비율로 칼럼 분할
+    col1, col2 = st.columns([2, 1])
     
     with col1:
-        video_frame = st.empty()  # 비디오 프레임
+        video_frame = st.empty()
     
     with col2:
-        real_time_speed = st.empty()  # 실시간 속도 표시
-        speed_chart = st.empty()  # 실시간 속도 그래프
+        real_time_speed = st.empty()
+        speed_chart = st.empty()
 
-    # 전체 분석 결과를 위한 컨테이너
     analysis_container = st.container()
 
-    # 트래커 초기화 및 기타 설정
+    # 트래커 초기화
     tracker = create_stable_tracker()
     if tracker is None:
         st.error("트래커를 생성할 수 없습니다. 프로그램을 종료합니다.")
         return
+
+    # 첫 프레임 읽기 및 bbox 초기화
+    ret, first_frame = video.read()
+    if not ret:
+        st.error("비디오 첫 프레임을 읽을 수 없습니다.")
+        return
+
+    # bbox 초기화 - initial_bbox 사용
+    bbox = initial_bbox
+    
+    # 첫 프레임 크기 조정
+    first_frame = cv2.resize(first_frame, (640, 360))
+
+    # YOLO로 공 검출 시도
+    try:
+        yolo_bbox = detect_ball_with_yolo(first_frame, net, output_layers, classes)
+        if yolo_bbox is not None:
+            bbox = yolo_bbox
+            st.success("YOLO로 공을 성공적으로 검출했습니다.")
+        else:
+            st.info("YOLO 검출 실패, 수동 설정된 위치를 사용합니다.")
+    except Exception as e:
+        st.warning(f"YOLO 검출 중 오류 발생: {str(e)}")
+        st.info("수동 설정된 위치를 사용합니다.")
+
+    # 트래커 초기화
+    try:
+        init_success = tracker.init(first_frame, bbox)
+        if not init_success:
+            st.warning("트래커 초기화 실패, 단순 추적으로 계속합니다.")
+    except Exception as e:
+        st.error(f"트래커 초기화 중 오류 발생: {str(e)}")
+        st.info("단순 추적으로 전환합니다.")
 
     # 변수 초기화
     prev_pos = None
@@ -1111,7 +1143,7 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     frames = []
     frame_count = 0
     total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-    
+
     # 진행 상태 표시
     progress_bar = st.progress(0)
     status_text = st.empty()
@@ -1122,6 +1154,9 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
 
     st.write("영상 처리 중... (실시간 재생)")
     
+    # 첫 프레임 다시 처리
+    video.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
     while True:
         ret, frame = video.read()
         if not ret:
@@ -1170,6 +1205,9 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
         except Exception as e:
             st.error(f"프레임 {frame_count} 처리 중 오류 발생: {str(e)}")
             st.error(traceback.format_exc())
+            # 오류 발생 시에도 bbox 유지
+            if 'bbox' not in locals():
+                bbox = initial_bbox
 
         # 진행률 업데이트
         frame_count += 1
@@ -1184,34 +1222,38 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     with analysis_container:
         st.markdown("## 분석 결과")
         
-        # 기본 통계
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("평균 속도", f"{np.mean(speeds):.1f} km/h")
-        with col2:
-            st.metric("최대 속도", f"{np.max(speeds):.1f} km/h")
-        with col3:
-            st.metric("최소 속도", f"{np.min(speeds):.1f} km/h")
-        
-        # 전체 속도 그래프
-        st.markdown("### 전체 속도 분석 그래프")
-        final_speed_chart = st.empty()
-        update_charts(frames, speeds, final_speed_chart, frame_count, graph_color, is_final=True)
-        
-        # 데이터 다운로드 옵션
-        df = pd.DataFrame({
-            'Frame': frames,
-            'Speed (km/h)': speeds
-        })
-        
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            "속도 데이터 다운로드 (CSV)",
-            csv,
-            "ball_speed_data.csv",
-            "text/csv",
-            key='download-csv'
-        )
+        if speeds:  # 속도 데이터가 있는 경우에만 표시
+            # 기본 통계
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("평균 속도", f"{np.mean(speeds):.1f} km/h")
+            with col2:
+                st.metric("최대 속도", f"{np.max(speeds):.1f} km/h")
+            with col3:
+                st.metric("최소 속도", f"{np.min(speeds):.1f} km/h")
+            
+            # 전체 속도 그래프
+            st.markdown("### 전체 속도 분석 그래프")
+            final_speed_chart = st.empty()
+            update_charts(frames, speeds, final_speed_chart, frame_count, graph_color, is_final=True)
+            
+            # 데이터 다운로드 옵션
+            df = pd.DataFrame({
+                'Frame': frames,
+                'Speed (km/h)': speeds
+            })
+            
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                "속도 데이터 다운로드 (CSV)",
+                csv,
+                "ball_speed_data.csv",
+                "text/csv",
+                key='download-csv'
+            )
+        else:
+            st.warning("속도 데이터가 기록되지 않았습니다.")
+
 def process_uploaded_video(uploaded_file, net, output_layers, classes):
     """업로드된 비디오 처리"""
     if 'video_settings' not in st.session_state:
