@@ -965,13 +965,6 @@ def select_color_from_image(frame):
             st.session_state.click_x = x
             st.session_state.click_y = y
             st.session_state.selected_color = frame[y, x]
-            
-            # 현재 선택 위치 표시
-            frame_with_marker = frame_rgb.copy()
-            marker_size = 10
-            cv2.line(frame_with_marker, (x - marker_size, y), (x + marker_size, y), (0, 255, 0), 2)
-            cv2.line(frame_with_marker, (x, y - marker_size), (x, y + marker_size), (0, 255, 0), 2)
-            st.image(frame_with_marker, caption="클릭하여 색상 선택", use_column_width=True)
 
     with col2:
         if st.session_state.selected_color is not None:
@@ -1005,7 +998,7 @@ def select_color_from_image(frame):
             mask = cv2.inRange(hsv, st.session_state.lower_color, st.session_state.upper_color)
             mask_preview = cv2.bitwise_and(frame, frame, mask=mask)
             mask_preview_rgb = cv2.cvtColor(mask_preview, cv2.COLOR_BGR2RGB)
-            st.image(mask_preview_rgb, caption="마스크 미리보기")
+            st.image(mask_preview_rgb, caption="마스크 미리보기", use_column_width=True)
             
             # BGR, HSV 값 표시
             st.write(f"BGR 값: ({b}, {g}, {r})")
