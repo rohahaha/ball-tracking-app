@@ -795,10 +795,18 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
     color = 'white' if graph_color == 'white' else 'black'
     trend_line_color = 'white' if trend_color == 'white' else 'black'
     
+    if is_final:
+        # 세션 스테이트에 데이터 저장
+        st.session_state.frame_images = frame_images
+        st.session_state.ball_positions = ball_positions
+        st.session_state.speeds = speeds
+        st.session_state.frames = frames
+        st.session_state.graph_color = color
+        st.session_state.trend_line_color = trend_line_color
+
     data = speeds if is_final else speeds[-100:]
     x_data = frames if is_final else frames[-100:]
     
-    # 기본 속도 그래프
     speed_fig = go.Figure(go.Scatter(
         x=x_data, 
         y=data, 
@@ -808,7 +816,7 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
         hovertemplate='Frame: %{x}<br>Speed: %{y:.1f} km/h<extra></extra>'
     ))
     
-    # 추세선 추가 (기존 코드)
+    # 추세선 추가
     if len(x_data) > 10:
         x_np = np.array(x_data)
         y_np = np.array(data)
@@ -826,7 +834,6 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
                 line=dict(color=trend_line_color, dash='dot'),
             ))
 
-    # 그래프 레이아웃 설정
     speed_fig.update_layout(
         title="Ball Speed Analysis" if is_final else "Real-time Speed",
         xaxis_title="Frame",
@@ -836,11 +843,11 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
         font=dict(color=color),
         showlegend=True,
         height=400 if is_final else 300,
-        margin=dict(l=50, r=50, t=50, b=50)
+        margin=dict(l=50, r=50, t=50, b=50),
+        hovermode='x unified'
     )
-    
+
     if is_final:
-        # 통계 정보 추가
         avg_speed = np.mean(data)
         max_speed = np.max(data)
         speed_fig.add_hline(
@@ -858,38 +865,38 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
             annotation_position="right"
         )
 
-        # 세션 스테이트에 데이터 저장
-        if 'frame_images' not in st.session_state:
-            st.session_state.frame_images = frame_images
-        if 'ball_positions' not in st.session_state:
-            st.session_state.ball_positions = ball_positions
-        if 'speeds' not in st.session_state:
-            st.session_state.speeds = speeds
-        if 'frames' not in st.session_state:
-            st.session_state.frames = frames
+        # 컨테이너에 통계 지표 표시
+        st.markdown("### 전체 통계")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("평균 속도", f"{avg_speed:.1f} km/h")
+        with col2:
+            st.metric("최대 속도", f"{max_speed:.1f} km/h")
+        with col3:
+            st.metric("최소 속도", f"{min(data):.1f} km/h")
 
-        # 그래프 표시 및 클릭 이벤트 처리
+        # 그래프 표시
+        st.markdown("### 속도 분석 그래프")
         selected_points = plotly_events(speed_fig, click_event=True, hover_event=False)
         
-        # 프레임 표시 컨테이너
-        frame_display = st.empty()
-        
+        # 프레임 표시를 위한 컨테이너
         if selected_points:
             point = selected_points[0]
             frame_idx = int(point['x'])
             
             if frame_idx in st.session_state.frame_images:
+                st.markdown("### 선택한 프레임 분석")
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    st.markdown(f"### Frame {frame_idx}")
+                    st.markdown(f"#### Frame {frame_idx}")
                     st.image(st.session_state.frame_images[frame_idx], channels="BGR", 
                             caption=f"Speed: {st.session_state.speeds[st.session_state.frames.index(frame_idx)]:.1f} km/h")
                 
                 with col2:
+                    st.markdown("#### 공의 궤적")
                     trajectory_img = st.session_state.frame_images[frame_idx].copy()
                     
-                    # 이전 5개와 이후 5개 프레임의 공 위치 표시
                     for i in range(max(0, frame_idx-5), min(frame_idx+6, max(st.session_state.frames)+1)):
                         if i in st.session_state.ball_positions:
                             pos = st.session_state.ball_positions[i]
@@ -897,10 +904,26 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
                             cv2.circle(trajectory_img, pos, 3, color, -1)
                     
                     st.image(trajectory_img, channels="BGR", 
-                            caption="Ball Trajectory (Green: Past, Red: Current, Blue: Future)")
+                            caption="Green: Past, Red: Current, Blue: Future")
     else:
         speed_chart.plotly_chart(speed_fig, use_container_width=True, 
                                key=f"speed_chart_{frame_count}{'_final' if is_final else ''}")
+
+    # CSV 다운로드 버튼
+    if is_final:
+        df = pd.DataFrame({
+            'Frame': frames,
+            'Speed (km/h)': speeds
+        })
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            "속도 데이터 다운로드 (CSV)",
+            csv,
+            "ball_speed_data.csv",
+            "text/csv",
+            key='download-csv'
+        )
+
 
 def select_color_from_image(frame):
     """이미지에서 클릭으로 색상 선택"""
@@ -1241,41 +1264,15 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     # 분석 결과 표시
     with analysis_container:
         st.markdown("## 분석 결과")
-        
         if speeds:
-            # 기본 통계
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("평균 속도", f"{np.mean(speeds):.1f} km/h")
-            with col2:
-                st.metric("최대 속도", f"{np.max(speeds):.1f} km/h")
-            with col3:
-                st.metric("최소 속도", f"{np.min(speeds):.1f} km/h")
-
-            # 전체 속도 그래프
-            st.markdown("### 전체 속도 분석 그래프")
-            final_speed_chart = st.empty()
-            update_charts(frames, speeds, final_speed_chart, frame_count, 
+            # 모든 분석 결과는 update_charts 함수 내에서 처리
+            update_charts(frames, speeds, None, frame_count, 
                          graph_color, trend_color, is_final=True,
                          frame_images=frame_images, 
                          ball_positions=ball_positions)
-            
-            # 데이터 다운로드 옵션
-            df = pd.DataFrame({
-                'Frame': frames,
-                'Speed (km/h)': speeds
-            })
-            
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                "속도 데이터 다운로드 (CSV)",
-                csv,
-                "ball_speed_data.csv",
-                "text/csv",
-                key='download-csv'
-            )
         else:
             st.warning("속도 데이터가 기록되지 않았습니다.")
+
 
 def process_uploaded_video(uploaded_file, net, output_layers, classes):
     """업로드된 비디오 처리"""
