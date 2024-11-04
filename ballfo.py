@@ -12,6 +12,8 @@ import gdown
 import traceback
 import urllib.request
 import time
+from streamlit_plotly_events import plotly_events  # 추가된 import
+from streamlit_image_coordinates import streamlit_image_coordinates
 
 # Streamlit 페이지 설정 (반드시 다른 st 명령어보다 먼저 와야 함)
 st.set_page_config(
