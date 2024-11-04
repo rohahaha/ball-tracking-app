@@ -1285,17 +1285,8 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
     video.release()
     
     if ret:
-        # 비디오 표시 크기 제한을 위한 CSS 추가
-        st.markdown("""
-            <style>
-                .stVideo {
-                    max-width: 384px !important;
-                }
-            </style>
-            """, unsafe_allow_html=True)
-        
-        # 일반적인 비디오 표시 방식 사용
-        st.video(tfile.name)
+        # 간단한 방식으로 비디오 표시
+        st.video(uploaded_file)
         
         # 첫 프레임 크기 조정 (종횡비 유지)
         first_frame = resize_frame(first_frame)
@@ -1369,7 +1360,8 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
 
                 # 설정값 저장
                 st.session_state.video_settings.update({
-                    'real_distance': real_distance
+                    'real_distance': real_distance,
+                    'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2
                 })
 
                 # pixels_per_meter 계산
@@ -1398,7 +1390,7 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
         except PermissionError:
             pass
     else:
-        st.error("Failed to read the first frame of the video.")
+        st.error("비디오 첫 프레임을 읽을 수 없습니다.")
 
 def main():
     """메인 실행 함수"""
