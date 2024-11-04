@@ -3,6 +3,7 @@ import numpy as np
 import streamlit as st
 from collections import deque
 import plotly.graph_objs as go
+import pandas as pd
 from scipy.signal import savgol_filter
 import colorsys
 import tempfile
@@ -913,6 +914,7 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, is_fina
     
     speed_chart.plotly_chart(speed_fig, use_container_width=True, 
                            key=f"speed_chart_{frame_count}{'_final' if is_final else ''}")
+
 
 
 def select_color_from_image(frame):
