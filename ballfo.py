@@ -43,12 +43,13 @@ st.title('객체(공) 속도 추적 프로그램_by ROHA T')
 # 세션 상태 초기화 - 여기에 필요한 변수들 추가
 if 'initialized' not in st.session_state:
     st.session_state.initialized = False
-    st.session_state.analysis_frames = []    # 추가
-    st.session_state.analysis_speeds = []    # 추가
-    st.session_state.analysis_images = {}    # 추가
-    st.session_state.analysis_positions = {} # 추가
-    st.session_state.selected_frame = None   # 추가
-
+    st.session_state.analysis_frames = []
+    st.session_state.analysis_speeds = []
+    st.session_state.analysis_images = {}
+    st.session_state.analysis_positions = {}
+    st.session_state.selected_frame = None
+    st.session_state.video_settings = {}  # video_settings도 추가
+    
 # 전역 예외 처리
 try:
     if not st.session_state.initialized:
@@ -796,13 +797,17 @@ def rgb_to_hsv(r, g, b):
 def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_color, 
                  is_final=False, frame_images=None, ball_positions=None):
     """차트 업데이트"""
-    if is_final and frame_images:
-        # 세션 상태에 분석에 필요한 모든 데이터 저장
-        st.session_state.analysis_frames = frames
-        st.session_state.analysis_speeds = speeds
-        st.session_state.analysis_images = frame_images
-        st.session_state.analysis_positions = ball_positions
-
+    try:
+        if is_final:
+            if frame_images is not None:
+                st.session_state.analysis_images = frame_images
+            if ball_positions is not None:
+                st.session_state.analysis_positions = ball_positions
+            st.session_state.analysis_frames = frames
+            st.session_state.analysis_speeds = speeds
+        
+    except Exception as e:
+        st.error(f"차트 업데이트 중 오류 발생: {str(e)}")
     color = 'white' if graph_color == 'white' else 'black'
     trend_line_color = 'white' if trend_color == 'white' else 'black'
     
@@ -1172,6 +1177,9 @@ def resize_frame(frame, target_width=384):
 
 def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers, 
                  classes, lower_color, upper_color, graph_color, trend_color):
+    # 로컬 변수로 frame_images 정의
+    frame_images = {}
+                     
     """비디오 처리 및 분석"""
     video = cv2.VideoCapture(video_path)
     fps = video.get(cv2.CAP_PROP_FPS)
@@ -1194,7 +1202,6 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     frames = []
     speeds = []
     ball_positions = {}
-    frame_images = {}
     frame_interval = 10  # 매 10프레임마다 저장
     
     # 트래커 초기화
