@@ -38,7 +38,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # 앱 제목
-st.title('객체(공) 속도 추적 프로그램_by ROHA T')
+st.title('객체(공) 속도 추적 프로그램_by ROHA')
 
 # 세션 상태 초기화 - 여기에 필요한 변수들 추가
 if 'initialized' not in st.session_state:
@@ -782,11 +782,12 @@ def track_ball(frame, tracker, bbox, lower_color, upper_color, min_radius, max_r
     return frame, center, bbox
 
 def calculate_speed(prev_pos, curr_pos, fps, pixels_per_meter):
-    """속도 계산"""
+    """속도 계산 - m/s 단위로 직접 반환"""
     distance = np.sqrt((curr_pos[0] - prev_pos[0])**2 + (curr_pos[1] - prev_pos[1])**2)
     distance_meters = distance / pixels_per_meter
     speed = distance_meters * fps  # m/s
-    return speed
+    return speed  
+
 
 def rgb_to_hsv(r, g, b):
     """RGB to HSV 변환"""
@@ -795,33 +796,30 @@ def rgb_to_hsv(r, g, b):
     return int(h * 179), int(s * 255), int(v * 255)
 
 def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_color, 
-                 is_final=False, frame_images=None, ball_positions=None):
-    """차트 업데이트"""
-    try:
-        if is_final:
-            if frame_images is not None:
-                st.session_state.analysis_images = frame_images
-            if ball_positions is not None:
-                st.session_state.analysis_positions = ball_positions
-            st.session_state.analysis_frames = frames
-            st.session_state.analysis_speeds = speeds
-        
-    except Exception as e:
-        st.error(f"차트 업데이트 중 오류 발생: {str(e)}")
+                 is_final=False, frame_images=None, ball_positions=None, fps=30):
+    """차트 업데이트 - m/s 단위로 수정"""
+    if is_final and frame_images:
+        st.session_state.analysis_frames = frames
+        st.session_state.analysis_speeds = speeds
+        st.session_state.analysis_images = frame_images
+        st.session_state.analysis_positions = ball_positions
+
     color = 'white' if graph_color == 'white' else 'black'
     trend_line_color = 'white' if trend_color == 'white' else 'black'
     
+    # 프레임 번호를 시간(s)으로 변환
+    times = [frame/fps for frame in frames]
     data = speeds if is_final else speeds[-100:]
-    x_data = frames if is_final else frames[-100:]
+    x_data = times if is_final else times[-100:]
     
-    # 기본 그래프 생성
+    # 기본 그래프 생성 - m/s 단위로 표시
     speed_fig = go.Figure(go.Scatter(
         x=x_data, 
         y=data, 
         mode='lines+markers',
-        name='Speed (km/h)',
+        name='Speed (m/s)',
         line=dict(color=color),
-        hovertemplate='Frame: %{x}<br>Speed: %{y:.1f} km/h<extra></extra>'
+        hovertemplate='Time: %{x:.2f} s<br>Speed: %{y:.2f} m/s<extra></extra>'
     ))
     
     # 추세선 추가
@@ -845,8 +843,8 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
     # 그래프 레이아웃
     speed_fig.update_layout(
         title="Ball Speed Analysis" if is_final else "Real-time Speed",
-        xaxis_title="Frame",
-        yaxis_title="Speed (km/h)",
+        xaxis_title="Time (s)",
+        yaxis_title="Speed (m/s)",
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
         font=dict(color=color),
@@ -856,76 +854,94 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
     )
 
     if is_final:
-        # 통계 정보 추가
         avg_speed = np.mean(data)
         max_speed = np.max(data)
         min_speed = np.min(data)
+        total_time = max(times)
         
         speed_fig.add_hline(
             y=avg_speed,
             line_dash="dot",
             line_color=color,
-            annotation_text=f"Average: {avg_speed:.1f} km/h",
+            annotation_text=f"Average: {avg_speed:.2f} m/s",
             annotation_position="right"
         )
         speed_fig.add_hline(
             y=max_speed,
             line_dash="dot",
             line_color=color,
-            annotation_text=f"Max: {max_speed:.1f} km/h",
+            annotation_text=f"Max: {max_speed:.2f} m/s",
             annotation_position="right"
         )
 
         # 통계 표시
         st.markdown("### 전체 통계")
-        cols = st.columns(3)
+        cols = st.columns(4)
         with cols[0]:
-            st.metric("평균 속도", f"{avg_speed:.1f} km/h")
+            st.metric("평균 속도", f"{avg_speed:.2f} m/s")
         with cols[1]:
-            st.metric("최대 속도", f"{max_speed:.1f} km/h")
+            st.metric("최대 속도", f"{max_speed:.2f} m/s")
         with cols[2]:
-            st.metric("최소 속도", f"{min_speed:.1f} km/h")
+            st.metric("최소 속도", f"{min_speed:.2f} m/s")
+        with cols[3]:
+            st.metric("총 분석 시간", f"{total_time:.2f} s")
 
         # 그래프 표시
         st.plotly_chart(speed_fig, use_container_width=True)
         
-        # 프레임 분석 컨트롤
-        if 'selected_frame' not in st.session_state:
-            st.session_state.selected_frame = min(frames)
+        # 시간 기반 분석 컨트롤
+        if 'selected_time' not in st.session_state:
+            st.session_state.selected_time = 0.0
         
-        st.markdown("### 프레임 분석")
-        frame_col1, frame_col2 = st.columns([3, 1])
+        st.markdown("### 시간별 분석")
+        time_col1, time_col2 = st.columns([3, 1])
         
-        with frame_col1:
-            frame_number = st.number_input(
-                "분석할 프레임 번호",
-                min_value=min(frames),
-                max_value=max(frames),
-                value=st.session_state.selected_frame,
-                step=10,
-                key='frame_number'
+        with time_col1:
+            selected_time = st.slider(
+                "분석할 시간(s)",
+                min_value=0.0,
+                max_value=float(total_time),
+                value=st.session_state.selected_time,
+                step=0.1,
+                key='time_slider'
             )
+            st.session_state.selected_time = selected_time
+            selected_frame = int(selected_time * fps)
         
-        with frame_col2:
-            if st.button("프레임 분석", key='analyze_frame'):
-                st.session_state.selected_frame = frame_number
-        
-        # 선택된 프레임 분석 표시
-        if hasattr(st.session_state, 'selected_frame'):
-            show_frame_analysis(
-                st.session_state.selected_frame,
-                st.session_state.analysis_frames,
-                st.session_state.analysis_speeds,
-                st.session_state.analysis_images,
-                st.session_state.analysis_positions
-            )
+        with time_col2:
+            if st.button("시간 분석", key='analyze_time'):
+                if hasattr(st.session_state, 'selected_time'):
+                    selected_frame = int(st.session_state.selected_time * fps)
+                    show_frame_analysis(
+                        selected_frame,
+                        st.session_state.analysis_frames,
+                        st.session_state.analysis_speeds,
+                        st.session_state.analysis_images,
+                        st.session_state.analysis_positions
+                    )
+
+        # CSV 다운로드 - m/s 단위로 저장
+        df = pd.DataFrame({
+            'Time (s)': times,
+            'Frame': frames,
+            'Speed (m/s)': speeds
+        })
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            "속도 데이터 다운로드 (CSV)",
+            csv,
+            "ball_speed_data.csv",
+            "text/csv",
+            key='download-csv-results'
+        )
     else:
+        # 실시간 속도 표시도 m/s로 변경
+        real_time_speed.markdown(f"### Current Speed\n{speeds[-1]:.2f} m/s")
         speed_chart.plotly_chart(speed_fig, use_container_width=True, 
                                key=f"speed_chart_{frame_count}")
 
 def show_frame_analysis(frame_num, frames, speeds, images, positions):
-    """선택된 프레임 분석 표시"""
-    # 가장 가까운 저장된 프레임 찾기
+    """프레임 분석 표시 - m/s 단위로 수정"""
     available_frames = sorted(list(images.keys()))
     nearest_frame = min(available_frames, key=lambda x: abs(x - frame_num))
     
@@ -937,7 +953,7 @@ def show_frame_analysis(frame_num, frames, speeds, images, positions):
             current_speed = speeds[frames.index(nearest_frame)]
             frame_image = images[nearest_frame]
             st.image(frame_image, channels="BGR", 
-                    caption=f"Speed: {current_speed:.1f} km/h")
+                    caption=f"Speed: {current_speed:.2f} m/s")
             
             # 속도 분석
             st.markdown("#### 속도 분석")
@@ -945,15 +961,14 @@ def show_frame_analysis(frame_num, frames, speeds, images, positions):
             max_speed = np.max(speeds)
             speed_diff = current_speed - avg_speed
             
-            st.write(f"- 현재 속도: {current_speed:.1f} km/h")
-            st.write(f"- 평균 대비: {speed_diff:+.1f} km/h")
+            st.write(f"- 현재 속도: {current_speed:.2f} m/s")
+            st.write(f"- 평균 대비: {speed_diff:+.2f} m/s")
             st.write(f"- 최대 대비: {(current_speed/max_speed*100):.1f}%")
         
         with col2:
             st.markdown("#### 공의 궤적")
             trajectory_img = images[nearest_frame].copy()
             
-            # 궤적 표시 (이전 5프레임 ~ 이후 5프레임)
             for i in range(max(0, nearest_frame-5), min(nearest_frame+6, max(frames)+1)):
                 if i in positions:
                     pos = positions[i]
@@ -965,10 +980,9 @@ def show_frame_analysis(frame_num, frames, speeds, images, positions):
             st.image(trajectory_img, channels="BGR", 
                     caption="Green: Past, Red: Current, Blue: Future")
             
-            # 위치 정보
             if nearest_frame in positions:
                 x, y = positions[nearest_frame]
-                st.write(f"- 공의 위치: ({x}, {y})")
+                st.write(f"- 공의 위치: ({x}, {y}) pixels")
 
     # CSV 다운로드 버튼
     df = pd.DataFrame({
