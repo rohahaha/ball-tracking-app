@@ -797,13 +797,7 @@ def rgb_to_hsv(r, g, b):
 
 def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_color, 
                  is_final=False, frame_images=None, ball_positions=None, fps=30):
-    """차트 업데이트 - m/s 단위로 수정"""
-    if is_final and frame_images:
-        st.session_state.analysis_frames = frames
-        st.session_state.analysis_speeds = speeds
-        st.session_state.analysis_images = frame_images
-        st.session_state.analysis_positions = ball_positions
-
+    """차트 업데이트 - 단순화된 버전"""
     color = 'white' if graph_color == 'white' else 'black'
     trend_line_color = 'white' if trend_color == 'white' else 'black'
     
@@ -812,7 +806,7 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
     data = speeds if is_final else speeds[-100:]
     x_data = times if is_final else times[-100:]
     
-    # 기본 그래프 생성 - m/s 단위로 표시
+    # 기본 그래프 생성
     speed_fig = go.Figure(go.Scatter(
         x=x_data, 
         y=data, 
@@ -854,26 +848,12 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
     )
 
     if is_final:
+        # 통계 계산
         avg_speed = np.mean(data)
         max_speed = np.max(data)
         min_speed = np.min(data)
         total_time = max(times)
         
-        speed_fig.add_hline(
-            y=avg_speed,
-            line_dash="dot",
-            line_color=color,
-            annotation_text=f"Average: {avg_speed:.2f} m/s",
-            annotation_position="right"
-        )
-        speed_fig.add_hline(
-            y=max_speed,
-            line_dash="dot",
-            line_color=color,
-            annotation_text=f"Max: {max_speed:.2f} m/s",
-            annotation_position="right"
-        )
-
         # 통계 표시
         st.markdown("### 전체 통계")
         cols = st.columns(4)
@@ -888,39 +868,8 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
 
         # 그래프 표시
         st.plotly_chart(speed_fig, use_container_width=True)
-        
-        # 시간 기반 분석 컨트롤
-        if 'selected_time' not in st.session_state:
-            st.session_state.selected_time = 0.0
-        
-        st.markdown("### 시간별 분석")
-        time_col1, time_col2 = st.columns([3, 1])
-        
-        with time_col1:
-            selected_time = st.slider(
-                "분석할 시간(s)",
-                min_value=0.0,
-                max_value=float(total_time),
-                value=st.session_state.selected_time,
-                step=0.1,
-                key='time_slider'
-            )
-            st.session_state.selected_time = selected_time
-            selected_frame = int(selected_time * fps)
-        
-        with time_col2:
-            if st.button("시간 분석", key='analyze_time'):
-                if hasattr(st.session_state, 'selected_time'):
-                    selected_frame = int(st.session_state.selected_time * fps)
-                    show_frame_analysis(
-                        selected_frame,
-                        st.session_state.analysis_frames,
-                        st.session_state.analysis_speeds,
-                        st.session_state.analysis_images,
-                        st.session_state.analysis_positions
-                    )
 
-        # CSV 다운로드 - m/s 단위로 저장
+        # CSV 다운로드
         df = pd.DataFrame({
             'Time (s)': times,
             'Frame': frames,
@@ -935,8 +884,6 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
             key='download-csv-results'
         )
     else:
-        # 실시간 속도 표시도 m/s로 변경
-        real_time_speed.markdown(f"### Current Speed\n{speeds[-1]:.2f} m/s")
         speed_chart.plotly_chart(speed_fig, use_container_width=True, 
                                key=f"speed_chart_{frame_count}")
 
@@ -1190,12 +1137,16 @@ def resize_frame(frame, target_width=384):
         return frame  # 오류 발생시 원본 반환
 
 
+
 def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers, 
                  classes, lower_color, upper_color, graph_color, trend_color):
+    """비디오 처리 및 분석"""
+    # 전역 변수로 선언
+    global real_time_speed
+    
     # 로컬 변수로 frame_images 정의
     frame_images = {}
-                     
-    """비디오 처리 및 분석"""
+    
     video = cv2.VideoCapture(video_path)
     fps = video.get(cv2.CAP_PROP_FPS)
     width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -1288,14 +1239,13 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 speed_queue.append(speed)
                 avg_speed = sum(speed_queue) / len(speed_queue)
                 
-                speeds.append(avg_speed)  # km/h 변환 제거
+                speeds.append(avg_speed)  # m/s로 저장
                 frames.append(frame_count)
                 ball_positions[frame_count] = center
                 
                 if frame_count % 10 == 0:  # 매 10프레임마다 이미지 저장
                     frame_images[frame_count] = processed_frame.copy()
                 
-                # m/s 단위로 표시
                 real_time_speed.markdown(f"### Current Speed\n{avg_speed:.2f} m/s")
                 
                 if frame_count % 5 == 0 and speeds:  # 실시간 차트 업데이트
@@ -1329,6 +1279,7 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                      fps=fps)
     else:
         st.warning("속도 데이터가 기록되지 않았습니다.")
+
         
 def process_uploaded_video(uploaded_file, net, output_layers, classes):
     """업로드된 비디오 처리"""
