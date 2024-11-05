@@ -38,11 +38,16 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # 앱 제목
-st.title('공 추적 및 에너지 분석기')
+st.title('객체(공) 속도 추적 프로그램_by ROHA T')
 
-# 세션 상태 초기화
+# 세션 상태 초기화 - 여기에 필요한 변수들 추가
 if 'initialized' not in st.session_state:
     st.session_state.initialized = False
+    st.session_state.analysis_frames = []    # 추가
+    st.session_state.analysis_speeds = []    # 추가
+    st.session_state.analysis_images = {}    # 추가
+    st.session_state.analysis_positions = {} # 추가
+    st.session_state.selected_frame = None   # 추가
 
 # 전역 예외 처리
 try:
@@ -1165,9 +1170,6 @@ def resize_frame(frame, target_width=384):
         st.error(f"프레임 리사이즈 중 오류 발생: {str(e)}")
         return frame  # 오류 발생시 원본 반환
 
-frame_images = {}  # frame_images 변수 초기화
-
-
 def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers, 
                  classes, lower_color, upper_color, graph_color, trend_color):
     """비디오 처리 및 분석"""
@@ -1192,7 +1194,7 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     frames = []
     speeds = []
     ball_positions = {}
-    key_frames = {}
+    frame_images = {}
     frame_interval = 10  # 매 10프레임마다 저장
     
     # 트래커 초기화
@@ -1269,8 +1271,8 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 frames.append(frame_count)
                 ball_positions[frame_count] = center
                 
-                if frame_count % 10 == 0:  # 키프레임 저장
-                    key_frames[frame_count] = processed_frame.copy()
+                if frame_count % 10 == 0:  # 매 10프레임마다 이미지 저장
+                    frame_images[frame_count] = processed_frame.copy()
                 
                 real_time_speed.markdown(f"### Current Speed\n{avg_speed*3.6:.1f} km/h")
                 
@@ -1296,16 +1298,14 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     video.release()
     status_text.text("영상 처리가 완료되었습니다!")
 
-      # 분석 결과 표시
+    # 분석 결과 표시
     if speeds:
-        # show_analysis_results() 대신 update_charts 호출
         update_charts(frames, speeds, None, frame_count, 
                      graph_color, trend_color, is_final=True,
-                     frame_images=frame_images, 
-                     ball_positions=ball_positions)
+                     frame_images=frame_images,  # frame_images 전달
+                     ball_positions=ball_positions)  # ball_positions 전달
     else:
         st.warning("속도 데이터가 기록되지 않았습니다.")
-
 
 def process_uploaded_video(uploaded_file, net, output_layers, classes):
     """업로드된 비디오 처리"""
