@@ -1189,6 +1189,7 @@ def resize_frame(frame, target_width=384):
         st.error(f"프레임 리사이즈 중 오류 발생: {str(e)}")
         return frame  # 오류 발생시 원본 반환
 
+
 def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers, 
                  classes, lower_color, upper_color, graph_color, trend_color):
     # 로컬 변수로 frame_images 정의
@@ -1239,7 +1240,6 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
         yolo_bbox = detect_ball_with_yolo(first_frame, net, output_layers, classes)
         if yolo_bbox is not None:
             bbox = yolo_bbox
-        # 경고 메시지 제거
     except Exception as e:
         st.warning(f"YOLO 검출 중 오류가 발생했지만, 색상 기반 추적을 계속합니다.")
 
@@ -1288,18 +1288,19 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 speed_queue.append(speed)
                 avg_speed = sum(speed_queue) / len(speed_queue)
                 
-                speeds.append(avg_speed*3.6)
+                speeds.append(avg_speed)  # km/h 변환 제거
                 frames.append(frame_count)
                 ball_positions[frame_count] = center
                 
                 if frame_count % 10 == 0:  # 매 10프레임마다 이미지 저장
                     frame_images[frame_count] = processed_frame.copy()
                 
-                real_time_speed.markdown(f"### Current Speed\n{avg_speed*3.6:.1f} km/h")
+                # m/s 단위로 표시
+                real_time_speed.markdown(f"### Current Speed\n{avg_speed:.2f} m/s")
                 
                 if frame_count % 5 == 0 and speeds:  # 실시간 차트 업데이트
                     update_charts(frames[-100:], speeds[-100:], speed_chart, frame_count, 
-                                graph_color, trend_color, is_final=False)
+                                graph_color, trend_color, is_final=False, fps=fps)
             
             if center:
                 prev_pos = center
@@ -1321,13 +1322,14 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
 
     # 분석 결과 표시
     if speeds:
-        update_charts(frames, speeds, None, frame_count, 
+        update_charts(frames, speeds, speed_chart, frame_count, 
                      graph_color, trend_color, is_final=True,
-                     frame_images=frame_images,  # frame_images 전달
-                     ball_positions=ball_positions)  # ball_positions 전달
+                     frame_images=frame_images, 
+                     ball_positions=ball_positions,
+                     fps=fps)
     else:
         st.warning("속도 데이터가 기록되지 않았습니다.")
-
+        
 def process_uploaded_video(uploaded_file, net, output_layers, classes):
     """업로드된 비디오 처리"""
     try:
