@@ -28,17 +28,25 @@ st.set_page_config(
     }
 )
 
-# 앱 시작 부분에 CSS 수정
+# 앱 시작 부분에 CSS 추가
 st.markdown("""
     <style>
     .stVideo {
         max-width: 384px !important;
     }
+    .main {
+        background-color: #f0f2f6;
+        padding: 2rem;
+    }
+    .st-emotion-cache-1v0mbdj img {
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
     </style>
     """, unsafe_allow_html=True)
 
 # 앱 제목
-st.title('객체(공) 속도 추적 프로그램_by ROHA')
+st.title('물체/공 속도 추적 프로그램_by ROHA')
 
 # 세션 상태 초기화 - 여기에 필요한 변수들 추가
 if 'initialized' not in st.session_state:
