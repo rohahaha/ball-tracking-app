@@ -1273,9 +1273,11 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     progress_bar = st.progress(0)
     status_text = st.empty()
 
-    # FPS 제어
+    # FPS 제어 변수
     frame_interval = 1.0 / fps
-    last_frame_time = time.time()
+    frame_time = time.time()
+    update_interval = 1.0 / 30  # 화면 갱신 주기 (30fps)
+    last_update = time.time()
 
     st.write("영상 처리 중... (실시간 재생)")
     video.set(cv2.CAP_PROP_POS_FRAMES, 0)
@@ -1286,12 +1288,7 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
             break
 
         try:
-            current_time = time.time()
-            elapsed = current_time - last_frame_time
-            if elapsed < frame_interval:
-                time.sleep(frame_interval - elapsed)
-            last_frame_time = time.time()
-            
+            # 프레임 처리
             frame = resize_frame(frame)
             processed_frame, center, bbox = track_ball(frame, tracker, bbox, lower_color, upper_color, 10, 50)
             
@@ -1299,30 +1296,24 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 positions_queue.append((frame_count, center))
                 
                 if len(positions_queue) >= 2:
-                    # 첫 번째와 마지막 위치로 속도 계산
                     first_frame, first_pos = positions_queue[0]
                     last_frame, last_pos = positions_queue[-1]
                     
-                    # 프레임 간격으로 실제 시간 계산
                     time_diff = (last_frame - first_frame) / fps
                     
                     if time_diff > 0:
-                        # 거리 계산
                         distance = np.sqrt(
                             (last_pos[0] - first_pos[0])**2 + 
                             (last_pos[1] - first_pos[1])**2
                         )
                         
-                        # 보정된 거리 계산
                         distance_meters = (distance / pixels_per_meter) * 0.5
                         speed = distance_meters / time_diff
                         
-                        if speed <= 50:  # 속도 임계값 하향 조정
+                        if speed <= 50:
                             speed_queue.append(speed)
-                            # 이동 평균으로 속도 스무딩
                             avg_speed = sum(speed_queue) / len(speed_queue)
                             
-                            # 급격한 속도 변화 필터링
                             if speeds and abs(avg_speed - speeds[-1]) > 10:
                                 avg_speed = speeds[-1]
                             
@@ -1330,15 +1321,27 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                             frames.append(frame_count)
                             ball_positions[frame_count] = center
                             
-                            # 최고/최저 속도 프레임 처리
                             if not speeds[:-1] or avg_speed > max(speeds[:-1]):
                                 frame_images[frame_count] = processed_frame.copy()
                             if not speeds[:-1] or avg_speed < min(speeds[:-1]):
                                 frame_images[frame_count] = processed_frame.copy()
-                            
-                            real_time_speed.markdown(f"### Current Speed\n{avg_speed:.2f} m/s")
-            
-            video_frame.image(processed_frame, channels="BGR", use_column_width=False)
+
+            # 화면 갱신 제어
+            current_time = time.time()
+            if current_time - last_update >= update_interval:
+                video_frame.image(processed_frame, channels="BGR", use_column_width=False)
+                if len(speeds) > 0:
+                    real_time_speed.markdown(f"### Current Speed\n{speeds[-1]:.2f} m/s")
+                    if frame_count % 5 == 0:
+                        update_charts(frames[-100:], speeds[-100:], speed_chart, frame_count, 
+                                    graph_color, trend_color, is_final=False, fps=fps)
+                last_update = current_time
+
+            # 진행률 업데이트
+            if frame_count % 10 == 0:  # 진행률은 10프레임마다 업데이트
+                progress = int((frame_count / total_frames) * 100)
+                progress_bar.progress(progress)
+                status_text.text(f"처리 중: {frame_count}/{total_frames} 프레임 ({progress}%)")
 
         except Exception as e:
             st.error(f"프레임 {frame_count} 처리 중 오류 발생: {str(e)}")
@@ -1346,16 +1349,13 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 bbox = initial_bbox
 
         frame_count += 1
-        progress = int((frame_count / total_frames) * 100)
-        progress_bar.progress(progress)
-        status_text.text(f"처리 중: {frame_count}/{total_frames} 프레임 ({progress}%)")
 
     video.release()
     status_text.text("영상 처리가 완료되었습니다!")
 
     # 분석 결과 표시
     if speeds:
-        st.write(f"분석된 총 프레임 수: {len(frames)}")  # 디버깅용
+        st.write(f"분석된 총 프레임 수: {len(frames)}")
         update_charts(frames, speeds, speed_chart, frame_count, 
                      graph_color, trend_color, is_final=True,
                      frame_images=frame_images,
