@@ -782,12 +782,30 @@ def track_ball(frame, tracker, bbox, lower_color, upper_color, min_radius, max_r
     return frame, center, bbox
 
 def calculate_speed(prev_pos, curr_pos, fps, pixels_per_meter):
-    """속도 계산 - m/s 단위로 직접 반환"""
-    distance = np.sqrt((curr_pos[0] - prev_pos[0])**2 + (curr_pos[1] - prev_pos[1])**2)
-    distance_meters = distance / pixels_per_meter
-    speed = distance_meters * fps  # m/s
-    return speed  
-
+    """속도 계산 - 평균 속도로 개선"""
+    try:
+        # 픽셀 단위 거리 계산
+        distance = np.sqrt((curr_pos[0] - prev_pos[0])**2 + (curr_pos[1] - prev_pos[1])**2)
+        
+        # 미터 단위로 변환
+        distance_meters = distance / pixels_per_meter
+        
+        # 시간 간격 (1/fps)
+        time_interval = 1.0 / fps
+        
+        # 속도 계산 (m/s)
+        speed = distance_meters / time_interval
+        
+        # 비정상적으로 높은 속도 필터링 (예: 100 m/s 이상)
+        if speed > 100:
+            return 0
+            
+        return speed
+        
+    except Exception as e:
+        st.error(f"속도 계산 중 오류: {str(e)}")
+        return 0
+        
 
 def rgb_to_hsv(r, g, b):
     """RGB to HSV 변환"""
@@ -1212,83 +1230,75 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     bbox = initial_bbox
     first_frame = resize_frame(first_frame)
 
-    # YOLO와 트래커 초기화 (기존 코드와 동일)...
-
     prev_pos = None
-    speed_queue = deque(maxlen=5)
+    speed_queue = deque(maxlen=5)  # 최근 5개 프레임의 속도를 저장
+    positions_queue = deque(maxlen=5)  # 최근 5개 프레임의 위치를 저장
     frame_count = 0
-    total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-
-    # FPS 제어
-    frame_interval = 1.0 / fps
-    last_frame_time = time.time()
-
-    st.write("영상 처리 중... (실시간 재생)")
-    video.set(cv2.CAP_PROP_POS_FRAMES, 0)
-
+    
     while True:
         ret, frame = video.read()
         if not ret:
             break
 
         try:
-            current_time = time.time()
-            elapsed = current_time - last_frame_time
-            if elapsed < frame_interval:
-                time.sleep(frame_interval - elapsed)
-            last_frame_time = time.time()
-            
             frame = resize_frame(frame)
             processed_frame, center, bbox = track_ball(frame, tracker, bbox, lower_color, upper_color, 10, 50)
             
-            if center and prev_pos:
-                speed = calculate_speed(prev_pos, center, fps, pixels_per_meter)
-                speed_queue.append(speed)
-                avg_speed = sum(speed_queue) / len(speed_queue)
+            if center:
+                positions_queue.append((frame_count, center))
                 
-                speeds.append(avg_speed)
-                frames.append(frame_count)
-                ball_positions[frame_count] = center
-                
-                # 최고 속도 프레임 처리
-                if avg_speed > current_max_speed:
-                    current_max_speed = avg_speed
-                    max_speed_frames.append((avg_speed, frame_count))
-                    max_speed_frames.sort(key=lambda x: x[0], reverse=True)
-                    max_speed_frames = max_speed_frames[:MAX_PEAKS]
-                    frame_images[frame_count] = processed_frame.copy()
-                
-                # 최저 속도 프레임 처리
-                if avg_speed < current_min_speed:
-                    current_min_speed = avg_speed
-                    min_speed_frames.append((avg_speed, frame_count))
-                    min_speed_frames.sort(key=lambda x: x[0])
-                    min_speed_frames = min_speed_frames[:MAX_PEAKS]
-                    frame_images[frame_count] = processed_frame.copy()
-                
-                real_time_speed.markdown(f"### Current Speed\n{avg_speed:.2f} m/s")
-                
+                if len(positions_queue) >= 2:
+                    # 첫 번째와 마지막 위치로 속도 계산
+                    first_frame, first_pos = positions_queue[0]
+                    last_frame, last_pos = positions_queue[-1]
+                    
+                    # 프레임 간격으로 실제 시간 계산
+                    time_diff = (last_frame - first_frame) / fps
+                    
+                    if time_diff > 0:
+                        # 픽셀 단위 거리 계산
+                        distance = np.sqrt(
+                            (last_pos[0] - first_pos[0])**2 + 
+                            (last_pos[1] - first_pos[1])**2
+                        )
+                        
+                        # 미터 단위로 변환 및 속도 계산
+                        distance_meters = distance / pixels_per_meter
+                        speed = distance_meters / time_diff  # m/s
+                        
+                        speed_queue.append(speed)
+                        avg_speed = sum(speed_queue) / len(speed_queue)
+                        
+                        speeds.append(avg_speed)
+                        frames.append(frame_count)
+                        ball_positions[frame_count] = center
+                        
+                        # 최고 속도 프레임 처리
+                        if not speeds[:-1] or avg_speed > max(speeds[:-1]):
+                            frame_images[frame_count] = processed_frame.copy()
+                            st.write(f"New max speed: {avg_speed:.2f} m/s at frame {frame_count}")
+                        
+                        # 최저 속도 프레임 처리
+                        if not speeds[:-1] or avg_speed < min(speeds[:-1]):
+                            frame_images[frame_count] = processed_frame.copy()
+                            st.write(f"New min speed: {avg_speed:.2f} m/s at frame {frame_count}")
+                        
+                        real_time_speed.markdown(f"### Current Speed\n{avg_speed:.2f} m/s")
+                    
                 if frame_count % 5 == 0 and speeds:
                     update_charts(frames[-100:], speeds[-100:], speed_chart, frame_count, 
                                 graph_color, trend_color, is_final=False, fps=fps)
-            
-            if center:
-                prev_pos = center
             
             video_frame.image(processed_frame, channels="BGR", use_column_width=False)
 
         except Exception as e:
             st.error(f"프레임 {frame_count} 처리 중 오류 발생: {str(e)}")
-            if 'bbox' not in locals():
-                bbox = initial_bbox
-
+        
         frame_count += 1
         progress = int((frame_count / total_frames) * 100)
         progress_bar.progress(progress)
         status_text.text(f"처리 중: {frame_count}/{total_frames} 프레임 ({progress}%)")
+
 
     video.release()
     status_text.text("영상 처리가 완료되었습니다!")
