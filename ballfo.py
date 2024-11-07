@@ -1206,6 +1206,12 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     video = cv2.VideoCapture(video_path)
     fps = video.get(cv2.CAP_PROP_FPS)
     
+    # 전체 프레임 수 가져오기
+    total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+    if total_frames <= 0:
+        st.error("비디오 프레임 수를 읽을 수 없습니다.")
+        return
+        
     # Streamlit 레이아웃 설정
     col1, col2 = st.columns([2, 1])
     
@@ -1222,9 +1228,9 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     # 최고/최저 속도 추적을 위한 변수들
     current_max_speed = float('-inf')
     current_min_speed = float('inf')
-    max_speed_frames = []  # (speed, frame_count) 튜플을 저장
-    min_speed_frames = []  # (speed, frame_count) 튜플을 저장
-    MAX_PEAKS = 3  # 저장할 최대 피크 수
+    max_speed_frames = []
+    min_speed_frames = []
+    MAX_PEAKS = 3
     
     # 트래커 초기화
     tracker = create_stable_tracker()
@@ -1241,17 +1247,51 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     bbox = initial_bbox
     first_frame = resize_frame(first_frame)
 
+    # YOLO 검출 시도
+    try:
+        yolo_bbox = detect_ball_with_yolo(first_frame, net, output_layers, classes)
+        if yolo_bbox is not None:
+            bbox = yolo_bbox
+    except Exception as e:
+        st.warning(f"YOLO 검출 중 오류가 발생했지만, 색상 기반 추적을 계속합니다.")
+
+    # 트래커 초기화
+    try:
+        init_success = tracker.init(first_frame, bbox)
+        if not init_success:
+            st.warning("트래커 초기화 실패, 단순 추적으로 계속합니다.")
+    except Exception as e:
+        st.error(f"트래커 초기화 중 오류 발생: {str(e)}")
+
+    # 변수 초기화
     prev_pos = None
     speed_queue = deque(maxlen=5)  # 최근 5개 프레임의 속도를 저장
     positions_queue = deque(maxlen=5)  # 최근 5개 프레임의 위치를 저장
     frame_count = 0
-    
+
+    # 진행 상태 표시
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    # FPS 제어
+    frame_interval = 1.0 / fps
+    last_frame_time = time.time()
+
+    st.write("영상 처리 중... (실시간 재생)")
+    video.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
     while True:
         ret, frame = video.read()
         if not ret:
             break
 
         try:
+            current_time = time.time()
+            elapsed = current_time - last_frame_time
+            if elapsed < frame_interval:
+                time.sleep(frame_interval - elapsed)
+            last_frame_time = time.time()
+            
             frame = resize_frame(frame)
             processed_frame, center, bbox = track_ball(frame, tracker, bbox, lower_color, upper_color, 10, 50)
             
@@ -1277,61 +1317,49 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                         distance_meters = distance / pixels_per_meter
                         speed = distance_meters / time_diff  # m/s
                         
-                        speed_queue.append(speed)
-                        avg_speed = sum(speed_queue) / len(speed_queue)
-                        
-                        speeds.append(avg_speed)
-                        frames.append(frame_count)
-                        ball_positions[frame_count] = center
-                        
-                        # 최고 속도 프레임 처리
-                        if not speeds[:-1] or avg_speed > max(speeds[:-1]):
-                            frame_images[frame_count] = processed_frame.copy()
-                            st.write(f"New max speed: {avg_speed:.2f} m/s at frame {frame_count}")
-                        
-                        # 최저 속도 프레임 처리
-                        if not speeds[:-1] or avg_speed < min(speeds[:-1]):
-                            frame_images[frame_count] = processed_frame.copy()
-                            st.write(f"New min speed: {avg_speed:.2f} m/s at frame {frame_count}")
-                        
-                        real_time_speed.markdown(f"### Current Speed\n{avg_speed:.2f} m/s")
-                    
-                if frame_count % 5 == 0 and speeds:
-                    update_charts(frames[-100:], speeds[-100:], speed_chart, frame_count, 
-                                graph_color, trend_color, is_final=False, fps=fps)
+                        if speed <= 100:  # 비정상적으로 높은 속도 필터링
+                            speed_queue.append(speed)
+                            avg_speed = sum(speed_queue) / len(speed_queue)
+                            
+                            speeds.append(avg_speed)
+                            frames.append(frame_count)
+                            ball_positions[frame_count] = center
+                            
+                            # 최고 속도 프레임 처리
+                            if avg_speed > current_max_speed:
+                                current_max_speed = avg_speed
+                                frame_images[frame_count] = processed_frame.copy()
+                                st.write(f"New max speed: {avg_speed:.2f} m/s at frame {frame_count}")
+                            
+                            # 최저 속도 프레임 처리
+                            if avg_speed < current_min_speed:
+                                current_min_speed = avg_speed
+                                frame_images[frame_count] = processed_frame.copy()
+                                st.write(f"New min speed: {avg_speed:.2f} m/s at frame {frame_count}")
+                            
+                            real_time_speed.markdown(f"### Current Speed\n{avg_speed:.2f} m/s")
             
             video_frame.image(processed_frame, channels="BGR", use_column_width=False)
 
         except Exception as e:
             st.error(f"프레임 {frame_count} 처리 중 오류 발생: {str(e)}")
-        
+            if 'bbox' not in locals():
+                bbox = initial_bbox
+
         frame_count += 1
         progress = int((frame_count / total_frames) * 100)
         progress_bar.progress(progress)
         status_text.text(f"처리 중: {frame_count}/{total_frames} 프레임 ({progress}%)")
 
-
     video.release()
     status_text.text("영상 처리가 완료되었습니다!")
-
-    # 최종 프레임 이미지 정리
-    final_frame_images = {}
-    for _, frame_idx in max_speed_frames:
-        if frame_idx in frame_images:
-            final_frame_images[frame_idx] = frame_images[frame_idx]
-    for _, frame_idx in min_speed_frames:
-        if frame_idx in frame_images:
-            final_frame_images[frame_idx] = frame_images[frame_idx]
 
     # 분석 결과 표시
     if speeds:
         st.write(f"분석된 총 프레임 수: {len(frames)}")  # 디버깅용
-        st.write(f"최고 속도 프레임들: {max_speed_frames}")  # 디버깅용
-        st.write(f"최저 속도 프레임들: {min_speed_frames}")  # 디버깅용
-        
         update_charts(frames, speeds, speed_chart, frame_count, 
                      graph_color, trend_color, is_final=True,
-                     frame_images=final_frame_images,
+                     frame_images=frame_images,
                      ball_positions=ball_positions,
                      fps=fps)
     else:
