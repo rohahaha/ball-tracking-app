@@ -820,7 +820,7 @@ def rgb_to_hsv(r, g, b):
     h, s, v = colorsys.rgb_to_hsv(r, g, b)
     return int(h * 179), int(s * 255), int(v * 255)
 
-def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_color, 
+def update_charts(frames, speeds, speed_chart, frame_count, graph_color, 
                  is_final=False, frame_images=None, ball_positions=None, fps=30):
     """차트 업데이트 - 디스플레이 수정"""
     try:
@@ -857,7 +857,7 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
                     mode='lines+markers',
                     name='Speed (m/s)',
                     line=dict(
-                        color='blue',
+                        color=graph_color,
                         width=2
                     ),
                     marker=dict(
@@ -940,7 +940,7 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
                 x=[frame/fps for frame in last_100_frames],
                 y=last_100_speeds,
                 mode='lines+markers',
-                line=dict(color='blue')
+                line=dict(color=graph_color)
             ))
             fig.update_layout(
                 title="Real-time Speed",
@@ -1205,7 +1205,7 @@ def resize_frame(frame, target_width=384):
         return frame  # 오류 발생시 원본 반환
 
 def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers, 
-                 classes, lower_color, upper_color, graph_color, trend_color):
+                 classes, lower_color, upper_color, graph_color):
     """비디오 처리 및 분석"""
     global real_time_speed
     
@@ -1364,7 +1364,7 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     if speeds:
         st.write(f"분석된 총 프레임 수: {len(frames)}")  # 디버깅용
         update_charts(frames, speeds, speed_chart, frame_count, 
-                     graph_color, trend_color, is_final=True,
+                     graph_color, is_final=True,
                      frame_images=frame_images,
                      ball_positions=ball_positions,
                      fps=fps)
@@ -1400,38 +1400,24 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
         
         height, width = first_frame.shape[:2]
         
-        # 그래프 설정을 위한 컬럼 생성
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # 메인 그래프 색상 선택
-            graph_color = st.radio(
-                "메인 그래프 색상:",
-                ('white', 'black'),
-                key='graph_color'
-            )
-            
-        with col2:
-            # 추세선 색상 선택
-            trend_color = st.radio(
-                "추세선 색상:",
-                ('white', 'black'),
-                key='trend_color'
-            )
+        # 그래프 설정
+        graph_color = st.radio(
+            "그래프 색상:",
+            ('white', 'black'),
+            key='graph_color'
+        )
         
         # 색상 선택
         selected_color, lower_color, upper_color, click_pos = select_color_from_image(first_frame)
         if not any([selected_color is None, lower_color is None, upper_color is None, click_pos is None]):
-            # video settings 업데이트 - 모든 설정을 한번에 업데이트
+            # video settings 업데이트
             st.session_state.video_settings.update({
                 'selected_color': selected_color,
                 'lower_color': lower_color,
                 'upper_color': upper_color,
                 'click_pos': click_pos,
-                'graph_color': graph_color,
-                'trend_color': trend_color
+                'graph_color': graph_color
             })
-        
             if all(k in st.session_state.video_settings for k in 
                   ['selected_color', 'lower_color', 'upper_color', 'click_pos']):
                 # 거리 측정을 위한 점 선택
@@ -1499,8 +1485,7 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
                                    net, output_layers, classes, 
                                    st.session_state.video_settings['lower_color'],
                                    st.session_state.video_settings['upper_color'],
-                                   st.session_state.video_settings['graph_color'],
-                                   st.session_state.video_settings['trend_color'])
+                                   st.session_state.video_settings['graph_color'])
                     except Exception as e:
                         st.error(f"비디오 처리 중 오류 발생: {str(e)}")
                         st.error(traceback.format_exc())
