@@ -797,13 +797,16 @@ def rgb_to_hsv(r, g, b):
 
 def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_color, 
                  is_final=False, frame_images=None, ball_positions=None, fps=30):
-    """차트 업데이트 - 단순화된 버전"""
+    """차트 업데이트 - 시간 계산 수정"""
     try:
         # 기본 통계 계산
         avg_speed = np.mean(speeds)
         max_speed = np.max(speeds)
         min_speed = np.min(speeds)
-        total_time = max([frame/fps for frame in frames])
+        if frames:
+            total_time = frames[-1] / fps  # 마지막 프레임 번호로 총 시간 계산
+        else:
+            total_time = 0
         
         if is_final:
             # 메인 컨테이너를 2개 칼럼으로 분할
@@ -825,6 +828,7 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
                 # 그래프 생성
                 color = 'white' if graph_color == 'white' else 'black'
                 
+                # 시간 데이터 계산 수정
                 x_data = [frame/fps for frame in frames]
                 
                 speed_fig = go.Figure(go.Scatter(
@@ -913,7 +917,6 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
         st.error(traceback.format_exc())
         if not is_final:
             speed_chart.line_chart(speeds)
-
 
 
 def show_frame_analysis(frame_num, frames, speeds, images, positions):
