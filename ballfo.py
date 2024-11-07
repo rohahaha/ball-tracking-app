@@ -797,122 +797,79 @@ def rgb_to_hsv(r, g, b):
 
 def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_color, 
                  is_final=False, frame_images=None, ball_positions=None, fps=30):
-    """차트 업데이트 - 안전한 최고/최저 속도 프레임 표시"""
+    """차트 업데이트 - 최종 버전"""
     try:
-        color = 'white' if graph_color == 'white' else 'black'
-        trend_line_color = 'white' if trend_color == 'white' else 'black'
+        # 기본 통계 계산
+        avg_speed = np.mean(speeds)
+        max_speed = np.max(speeds)
+        min_speed = np.min(speeds)
+        total_time = max([frame/fps for frame in frames])
         
-        # 프레임 번호를 시간(s)으로 변환
-        times = [frame/fps for frame in frames]
-        data = speeds if is_final else speeds[-100:]
-        x_data = times if is_final else times[-100:]
+        # 통계 표시
+        st.markdown("### 전체 통계")
+        cols = st.columns(4)
+        with cols[0]:
+            st.metric("평균 속도", f"{avg_speed:.2f} m/s")
+        with cols[1]:
+            st.metric("최대 속도", f"{max_speed:.2f} m/s")
+        with cols[2]:
+            st.metric("최소 속도", f"{min_speed:.2f} m/s")
+        with cols[3]:
+            st.metric("총 분석 시간", f"{total_time:.2f} s")
+
+        # 메인 컨테이너를 2개 칼럼으로 분할
+        graph_col, images_col = st.columns([2, 1])
         
-        # 기본 그래프 생성
-        speed_fig = go.Figure(go.Scatter(
-            x=x_data, 
-            y=data,
-            mode='lines+markers',
-            name='Speed (m/s)',
-            line=dict(color=color),
-            hovertemplate='Time: %{x:.2f} s<br>Speed: %{y:.2f} m/s<extra></extra>'
-        ))
-        
-        # 추세선 추가
-        if len(x_data) > 10:
-            x_np = np.array(x_data)
-            y_np = np.array(data)
-            indices = range(0, len(x_data), 10)
-            x_trend = x_np[indices]
-            y_trend = y_np[indices]
-            if len(x_trend) > 1:
-                z = np.polyfit(x_trend, y_trend, 1)
-                p = np.poly1d(z)
-                speed_fig.add_trace(go.Scatter(
-                    x=x_trend,
-                    y=p(x_trend),
-                    mode='lines',
-                    name='Trend (10 frames)',
-                    line=dict(color=trend_line_color, dash='dot'),
-                ))
-
-        speed_fig.update_layout(
-            title="Ball Speed Analysis" if is_final else "Real-time Speed",
-            xaxis_title="Time (s)",
-            yaxis_title="Speed (m/s)",
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            font=dict(color=color),
-            showlegend=True,
-            height=400 if is_final else 300,
-            margin=dict(l=50, r=50, t=50, b=50)
-        )
-
-        if is_final and frame_images:
-            # 통계 계산
-            avg_speed = np.mean(data)
-            max_speed = np.max(data)
-            min_speed = np.min(data)
-            total_time = max(times)
+        with graph_col:
+            # 그래프 생성
+            color = 'white' if graph_color == 'white' else 'black'
+            trend_line_color = 'white' if trend_color == 'white' else 'black'
             
-            # 최고/최저 속도 프레임 찾기 (최대 3개씩만)
-            tolerance = 0.01  # 1cm/s 허용 오차
-            max_speed_indices = []
-            min_speed_indices = []
+            times = [frame/fps for frame in frames]
+            data = speeds if is_final else speeds[-100:]
+            x_data = times if is_final else times[-100:]
             
-            # 시간순으로 정렬된 최대 3개의 최고/최저 속도 지점 찾기
-            for i, speed in enumerate(speeds):
-                if abs(speed - max_speed) < tolerance:
-                    max_speed_indices.append(i)
-                    if len(max_speed_indices) >= 3:  # 최대 3개까지만
-                        break
-                        
-            for i, speed in enumerate(speeds):
-                if abs(speed - min_speed) < tolerance:
-                    min_speed_indices.append(i)
-                    if len(min_speed_indices) >= 3:  # 최대 3개까지만
-                        break
+            speed_fig = go.Figure(go.Scatter(
+                x=x_data, 
+                y=data,
+                mode='lines+markers',
+                name='Speed (m/s)',
+                line=dict(color=color),
+                hovertemplate='Time: %{x:.2f} s<br>Speed: %{y:.2f} m/s<extra></extra>'
+            ))
             
-            # 통계 표시
-            st.markdown("### 전체 통계")
-            cols = st.columns(4)
-            with cols[0]:
-                st.metric("평균 속도", f"{avg_speed:.2f} m/s")
-            with cols[1]:
-                st.metric("최대 속도", f"{max_speed:.2f} m/s")
-            with cols[2]:
-                st.metric("최소 속도", f"{min_speed:.2f} m/s")
-            with cols[3]:
-                st.metric("총 분석 시간", f"{total_time:.2f} s")
+            # 추세선 추가
+            if len(x_data) > 10:
+                x_np = np.array(x_data)
+                y_np = np.array(data)
+                indices = range(0, len(x_data), 10)
+                x_trend = x_np[indices]
+                y_trend = y_np[indices]
+                if len(x_trend) > 1:
+                    z = np.polyfit(x_trend, y_trend, 1)
+                    p = np.poly1d(z)
+                    speed_fig.add_trace(go.Scatter(
+                        x=x_trend,
+                        y=p(x_trend),
+                        mode='lines',
+                        name='Trend (10 frames)',
+                        line=dict(color=trend_line_color, dash='dot'),
+                    ))
 
-            # 그래프 표시
+            speed_fig.update_layout(
+                title="Ball Speed Analysis",
+                xaxis_title="Time (s)",
+                yaxis_title="Speed (m/s)",
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(color=color),
+                showlegend=True,
+                height=400,
+                margin=dict(l=50, r=50, t=50, b=50)
+            )
+            
             st.plotly_chart(speed_fig, use_container_width=True)
             
-            # 최고 속도 프레임들 표시
-            if max_speed_indices:
-                st.markdown(f"### 최고 속도 순간: {max_speed:.2f} m/s")
-                max_cols = st.columns(len(max_speed_indices))
-                
-                for idx, col in enumerate(max_cols):
-                    max_idx = max_speed_indices[idx]
-                    max_frame = frames[max_idx]
-                    if max_frame in frame_images:
-                        col.markdown(f"시간: {times[max_idx]:.2f} 초")
-                        col.image(frame_images[max_frame], channels="BGR", 
-                                caption=f"Frame {max_frame}")
-            
-            # 최저 속도 프레임들 표시
-            if min_speed_indices:
-                st.markdown(f"### 최저 속도 순간: {min_speed:.2f} m/s")
-                min_cols = st.columns(len(min_speed_indices))
-                
-                for idx, col in enumerate(min_cols):
-                    min_idx = min_speed_indices[idx]
-                    min_frame = frames[min_idx]
-                    if min_frame in frame_images:
-                        col.markdown(f"시간: {times[min_idx]:.2f} 초")
-                        col.image(frame_images[min_frame], channels="BGR", 
-                                caption=f"Frame {min_frame}")
-
             # CSV 다운로드
             df = pd.DataFrame({
                 'Time (s)': times,
@@ -927,13 +884,48 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
                 "text/csv",
                 key='download-csv-results'
             )
-        else:
-            speed_chart.plotly_chart(speed_fig, use_container_width=True, 
-                                   key=f"speed_chart_{frame_count}")
-                                   
+
+        with images_col:
+            if frame_images:
+                # 최고 속도 프레임들 찾기 (최대 3개)
+                tolerance = 0.01  # 1cm/s 허용 오차
+                max_speed_indices = []
+                min_speed_indices = []
+                
+                for i, speed in enumerate(speeds):
+                    if abs(speed - max_speed) < tolerance:
+                        max_speed_indices.append(i)
+                        if len(max_speed_indices) >= 3:
+                            break
+                
+                for i, speed in enumerate(speeds):
+                    if abs(speed - min_speed) < tolerance:
+                        min_speed_indices.append(i)
+                        if len(min_speed_indices) >= 3:
+                            break
+                
+                # 최고 속도 이미지들 표시
+                if max_speed_indices:
+                    st.markdown(f"#### 최고 속도: {max_speed:.2f} m/s")
+                    for idx in max_speed_indices:
+                        frame = frames[idx]
+                        if frame in frame_images:
+                            st.markdown(f"시간: {times[idx]:.2f} 초")
+                            st.image(frame_images[frame], channels="BGR", 
+                                   use_column_width=True)
+                
+                # 최저 속도 이미지들 표시
+                if min_speed_indices:
+                    st.markdown(f"#### 최저 속도: {min_speed:.2f} m/s")
+                    for idx in min_speed_indices:
+                        frame = frames[idx]
+                        if frame in frame_images:
+                            st.markdown(f"시간: {times[idx]:.2f} 초")
+                            st.image(frame_images[frame], channels="BGR", 
+                                   use_column_width=True)
+
     except Exception as e:
         st.error(f"차트 업데이트 중 오류 발생: {str(e)}")
-        # 기본 차트라도 표시
         if not is_final:
             speed_chart.line_chart(data)
 
