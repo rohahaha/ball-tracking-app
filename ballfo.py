@@ -1179,8 +1179,6 @@ def resize_frame(frame, target_width=384):
         st.error(f"프레임 리사이즈 중 오류 발생: {str(e)}")
         return frame  # 오류 발생시 원본 반환
 
-
-
 def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers, 
                  classes, lower_color, upper_color, graph_color, trend_color):
     """비디오 처리 및 분석"""
@@ -1211,7 +1209,11 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     frames = []
     speeds = []
     ball_positions = {}
-    frame_interval = 10  # 매 10프레임마다 저장
+    
+    # 최고/최저 속도 관리를 위한 변수들
+    max_speeds = []  # (speed, frame_count) 튜플을 저장할 리스트
+    min_speeds = []  # (speed, frame_count) 튜플을 저장할 리스트
+    MAX_PEAKS = 3  # 저장할 최대 피크 수
     
     # 트래커 초기화
     tracker = create_stable_tracker()
@@ -1219,17 +1221,16 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
         st.error("트래커를 생성할 수 없습니다. 프로그램을 종료합니다.")
         return
 
-    # 첫 프레임 읽기
+    # 첫 프레임 읽기와 초기화 (기존 코드와 동일)
     ret, first_frame = video.read()
     if not ret:
         st.error("비디오 첫 프레임을 읽을 수 없습니다.")
         return
 
-    # bbox 초기화
     bbox = initial_bbox
     first_frame = resize_frame(first_frame)
 
-    # YOLO로 공 검출 시도
+    # YOLO와 트래커 초기화 (기존 코드와 동일)
     try:
         yolo_bbox = detect_ball_with_yolo(first_frame, net, output_layers, classes)
         if yolo_bbox is not None:
@@ -1237,7 +1238,6 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     except Exception as e:
         st.warning(f"YOLO 검출 중 오류가 발생했지만, 색상 기반 추적을 계속합니다.")
 
-    # 트래커 초기화
     try:
         init_success = tracker.init(first_frame, bbox)
         if not init_success:
@@ -1282,16 +1282,26 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 speed_queue.append(speed)
                 avg_speed = sum(speed_queue) / len(speed_queue)
                 
-                speeds.append(avg_speed)  # m/s로 저장
+                speeds.append(avg_speed)
                 frames.append(frame_count)
                 ball_positions[frame_count] = center
                 
-                if frame_count % 10 == 0:  # 매 10프레임마다 이미지 저장
+                # 최고/최저 속도 프레임 저장 로직
+                if not speeds[:-1] or avg_speed > max(speeds[:-1]):
+                    max_speeds.append((avg_speed, frame_count))
+                    max_speeds.sort(reverse=True)
+                    max_speeds = max_speeds[:MAX_PEAKS]
+                    frame_images[frame_count] = processed_frame.copy()
+                
+                if not speeds[:-1] or avg_speed < min(speeds[:-1]):
+                    min_speeds.append((avg_speed, frame_count))
+                    min_speeds.sort()
+                    min_speeds = min_speeds[:MAX_PEAKS]
                     frame_images[frame_count] = processed_frame.copy()
                 
                 real_time_speed.markdown(f"### Current Speed\n{avg_speed:.2f} m/s")
                 
-                if frame_count % 5 == 0 and speeds:  # 실시간 차트 업데이트
+                if frame_count % 5 == 0 and speeds:
                     update_charts(frames[-100:], speeds[-100:], speed_chart, frame_count, 
                                 graph_color, trend_color, is_final=False, fps=fps)
             
@@ -1322,6 +1332,7 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                      fps=fps)
     else:
         st.warning("속도 데이터가 기록되지 않았습니다.")
+
 
         
 def process_uploaded_video(uploaded_file, net, output_layers, classes):
