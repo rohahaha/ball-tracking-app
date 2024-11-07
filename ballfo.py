@@ -738,46 +738,53 @@ def detect_ball(frame, lower_color, upper_color, min_radius, max_radius):
     return None, None
 
 def track_ball(frame, tracker, bbox, lower_color, upper_color, min_radius, max_radius):
-    """공 추적 함수"""
-    color_detection, color_center = detect_ball(frame, lower_color, upper_color, min_radius, max_radius)
+    """공 추적 함수 - 중심점 검출 개선"""
+    # 색상 기반 공 검출
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, lower_color, upper_color)
     
-    success, box = tracker.update(frame)
-    if success:
-        (x, y, w, h) = [int(v) for v in box]
-        tracker_center = (x + w//2, y + h//2)
+    # 노이즈 제거
+    mask = cv2.erode(mask, None, iterations=2)
+    mask = cv2.dilate(mask, None, iterations=2)
+    
+    # 컨투어 찾기
+    contours, _ = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    center = None
+    
+    if len(contours) > 0:
+        # 가장 큰 컨투어 찾기
+        c = max(contours, key=cv2.contourArea)
+        ((x, y), radius) = cv2.minEnclosingCircle(c)
         
-        if color_detection:
-            color_x, color_y, color_radius = color_detection
-            distance = np.sqrt((color_x - tracker_center[0])**2 + (color_y - tracker_center[1])**2)
+        # 모멘트를 이용한 중심점 계산
+        M = cv2.moments(c)
+        if M["m00"] != 0:
+            center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
             
-            if distance > color_radius:
-                new_bbox = (color_x - color_radius, color_y - color_radius, 
-                          2*color_radius, 2*color_radius)
-                tracker.init(frame, new_bbox)
-                bbox = new_bbox
-                center = color_center
-            else:
-                center = ((tracker_center[0] + color_center[0])//2, 
-                         (tracker_center[1] + color_center[1])//2)
-                bbox = (x, y, w, h)
-        else:
-            center = tracker_center
-            bbox = (x, y, w, h)
-    elif color_detection:
-        color_x, color_y, color_radius = color_detection
-        bbox = (color_x - color_radius, color_y - color_radius, 
-               2*color_radius, 2*color_radius)
-        tracker.init(frame, bbox)
-        center = color_center
-    else:
-        center = None
-        bbox = None
+            if min_radius < radius < max_radius:
+                # 원 그리기
+                cv2.circle(frame, (int(x), int(y)), int(radius), (0, 255, 0), 2)
+                cv2.circle(frame, center, 5, (0, 0, 255), -1)
+                
+                # 바운딩 박스 업데이트
+                bbox_size = int(radius * 2)
+                bbox = (
+                    int(center[0] - bbox_size/2),
+                    int(center[1] - bbox_size/2),
+                    bbox_size,
+                    bbox_size
+                )
+                tracker.init(frame, bbox)
     
-    if bbox:
-        x, y, w, h = bbox
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-    if center:
-        cv2.circle(frame, center, 5, (0, 0, 255), -1)
+    # 트래커 업데이트
+    if center is None:
+        success, box = tracker.update(frame)
+        if success:
+            (x, y, w, h) = [int(v) for v in box]
+            center = (x + w//2, y + h//2)
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            cv2.circle(frame, center, 5, (0, 0, 255), -1)
+            bbox = (x, y, w, h)
     
     return frame, center, bbox
 
