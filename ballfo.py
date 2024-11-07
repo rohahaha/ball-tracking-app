@@ -797,7 +797,7 @@ def rgb_to_hsv(r, g, b):
 
 def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_color, 
                  is_final=False, frame_images=None, ball_positions=None, fps=30):
-    """차트 업데이트 - 디버깅 추가"""
+    """차트 업데이트 - 안정화된 버전"""
     try:
         # 기본 통계 계산
         avg_speed = np.mean(speeds)
@@ -826,8 +826,10 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
                 color = 'white' if graph_color == 'white' else 'black'
                 trend_line_color = 'white' if trend_color == 'white' else 'black'
                 
+                x_data = [frame/fps for frame in frames]
+                
                 speed_fig = go.Figure(go.Scatter(
-                    x=[frame/fps for frame in frames],
+                    x=x_data,
                     y=speeds,
                     mode='lines+markers',
                     name='Speed (m/s)',
@@ -835,22 +837,34 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
                     hovertemplate='Time: %{x:.2f} s<br>Speed: %{y:.2f} m/s<extra></extra>'
                 ))
                 
-                if len(frames) > 10:
-                    x_np = np.array([frame/fps for frame in frames])
-                    y_np = np.array(speeds)
-                    indices = range(0, len(frames), 10)
-                    x_trend = x_np[indices]
-                    y_trend = y_np[indices]
-                    if len(x_trend) > 1:
-                        z = np.polyfit(x_trend, y_trend, 1)
-                        p = np.poly1d(z)
-                        speed_fig.add_trace(go.Scatter(
-                            x=x_trend,
-                            y=p(x_trend),
-                            mode='lines',
-                            name='Trend (10 frames)',
-                            line=dict(color=trend_line_color, dash='dot'),
-                        ))
+                # 안정적인 추세선 계산
+                try:
+                    if len(frames) > 10:
+                        # 데이터 포인트를 10개 구간으로 나누어 평균 계산
+                        segments = 10
+                        x_trend = []
+                        y_trend = []
+                        
+                        segment_size = len(frames) // segments
+                        for i in range(segments):
+                            start_idx = i * segment_size
+                            end_idx = (i + 1) * segment_size if i < segments - 1 else len(frames)
+                            if start_idx < end_idx:  # 유효한 구간인 경우만 처리
+                                x_avg = np.mean(x_data[start_idx:end_idx])
+                                y_avg = np.mean(speeds[start_idx:end_idx])
+                                x_trend.append(x_avg)
+                                y_trend.append(y_avg)
+                        
+                        if len(x_trend) > 1:  # 최소 2개 이상의 포인트가 있는 경우만 추세선 추가
+                            speed_fig.add_trace(go.Scatter(
+                                x=x_trend,
+                                y=y_trend,
+                                mode='lines',
+                                name='Trend',
+                                line=dict(color=trend_line_color, dash='dot'),
+                            ))
+                except Exception as e:
+                    st.warning(f"추세선 계산 중 오류 발생: {str(e)}")
 
                 speed_fig.update_layout(
                     title="Ball Speed Analysis",
@@ -868,7 +882,7 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
                 
                 # CSV 다운로드
                 df = pd.DataFrame({
-                    'Time (s)': [frame/fps for frame in frames],
+                    'Time (s)': x_data,
                     'Frame': frames,
                     'Speed (m/s)': speeds
                 })
@@ -906,6 +920,21 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color, trend_c
                             st.image(frame_images[frame_num], channels="BGR")
         
         else:
+            # 실시간 업데이트 시에는 간단한 그래프만 표시
+            speed_fig = go.Figure(go.Scatter(
+                x=[frame/fps for frame in frames[-100:]],
+                y=speeds[-100:],
+                mode='lines+markers',
+                name='Speed (m/s)',
+                line=dict(color=graph_color)
+            ))
+            speed_fig.update_layout(
+                title="Real-time Speed",
+                xaxis_title="Time (s)",
+                yaxis_title="Speed (m/s)",
+                showlegend=False,
+                height=300
+            )
             speed_chart.plotly_chart(speed_fig, use_container_width=True, 
                                    key=f"speed_chart_{frame_count}")
                                    
