@@ -1007,7 +1007,7 @@ def show_frame_analysis(frame_num, frames, speeds, images, positions):
     )
 
 def select_color_from_image(frame):
-    """이미지에서 클릭으로 색상 선택"""
+    """이미지에서 클릭으로 색상 선택 및 마스크 조정"""
     if 'color_selected' not in st.session_state:
         st.session_state.color_selected = False
 
@@ -1030,6 +1030,10 @@ def select_color_from_image(frame):
         st.session_state.upper_color = None
     if 'color_tolerance' not in st.session_state:
         st.session_state.color_tolerance = 20
+    if 'saturation_tolerance' not in st.session_state:
+        st.session_state.saturation_tolerance = 50
+    if 'value_tolerance' not in st.session_state:
+        st.session_state.value_tolerance = 50
 
     col1, col2 = st.columns([3, 1])
     
@@ -1071,22 +1075,35 @@ def select_color_from_image(frame):
             st.image(color_display)
             
             h, s, v = rgb_to_hsv(r, g, b)
+
+            # HSV 각 채널에 대한 허용 범위 조정
+            st.markdown("### 마스크 조정")
             st.session_state.color_tolerance = st.slider(
-                "색상 허용 범위", 
+                "색상(H) 허용 범위", 
                 0, 50, 
                 st.session_state.color_tolerance
+            )
+            st.session_state.saturation_tolerance = st.slider(
+                "채도(S) 허용 범위",
+                0, 100,
+                st.session_state.saturation_tolerance
+            )
+            st.session_state.value_tolerance = st.slider(
+                "명도(V) 허용 범위",
+                0, 100,
+                st.session_state.value_tolerance
             )
             
             # HSV 색상 범위 업데이트
             st.session_state.lower_color = np.array([
-                max(0, h - st.session_state.color_tolerance), 
-                max(0, s - 50), 
-                max(0, v - 50)
+                max(0, h - st.session_state.color_tolerance),
+                max(0, s - st.session_state.saturation_tolerance),
+                max(0, v - st.session_state.value_tolerance)
             ])
             st.session_state.upper_color = np.array([
-                min(179, h + st.session_state.color_tolerance), 
-                min(255, s + 50), 
-                min(255, v + 50)
+                min(179, h + st.session_state.color_tolerance),
+                min(255, s + st.session_state.saturation_tolerance),
+                min(255, v + st.session_state.value_tolerance)
             ])
             
             # 마스크 미리보기
@@ -1100,8 +1117,8 @@ def select_color_from_image(frame):
             st.write(f"BGR 값: ({b}, {g}, {r})")
             st.write(f"HSV 값: ({h}, {s}, {v})")
             
-            # 색상 선택 확정 버튼
-            if st.button("이 색상으로 선택"):
+            # 마스크 적용 확인
+            if st.button("이 마스크로 진행"):
                 st.session_state.color_selected = True
                 return (tuple(st.session_state.selected_color), 
                         st.session_state.lower_color, 
@@ -1115,6 +1132,7 @@ def select_color_from_image(frame):
                 (st.session_state.click_x, st.session_state.click_y))
     
     return None, None, None, None
+
 
 def detect_ball_with_yolo(frame, net, output_layers, classes):
     """YOLO를 사용한 공 검출"""
