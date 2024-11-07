@@ -782,22 +782,22 @@ def track_ball(frame, tracker, bbox, lower_color, upper_color, min_radius, max_r
     return frame, center, bbox
 
 def calculate_speed(prev_pos, curr_pos, fps, pixels_per_meter):
-    """속도 계산 - 평균 속도로 개선"""
+    """속도 계산 - 스케일링 조정"""
     try:
         # 픽셀 단위 거리 계산
         distance = np.sqrt((curr_pos[0] - prev_pos[0])**2 + (curr_pos[1] - prev_pos[1])**2)
         
-        # 미터 단위로 변환
-        distance_meters = distance / pixels_per_meter
+        # 미터 단위로 변환 (보정 계수 0.5 적용)
+        distance_meters = (distance / pixels_per_meter) * 0.5
         
-        # 시간 간격 (1/fps)
+        # 시간 간격
         time_interval = 1.0 / fps
         
         # 속도 계산 (m/s)
         speed = distance_meters / time_interval
         
-        # 비정상적으로 높은 속도 필터링 (예: 100 m/s 이상)
-        if speed > 100:
+        # 비정상적으로 높은 속도 필터링 (예: 50 m/s 이상)
+        if speed > 50:
             return 0
             
         return speed
@@ -1307,35 +1307,34 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                     time_diff = (last_frame - first_frame) / fps
                     
                     if time_diff > 0:
-                        # 픽셀 단위 거리 계산
+                        # 거리 계산
                         distance = np.sqrt(
                             (last_pos[0] - first_pos[0])**2 + 
                             (last_pos[1] - first_pos[1])**2
                         )
                         
-                        # 미터 단위로 변환 및 속도 계산
-                        distance_meters = distance / pixels_per_meter
-                        speed = distance_meters / time_diff  # m/s
+                        # 보정된 거리 계산
+                        distance_meters = (distance / pixels_per_meter) * 0.5
+                        speed = distance_meters / time_diff
                         
-                        if speed <= 100:  # 비정상적으로 높은 속도 필터링
+                        if speed <= 50:  # 속도 임계값 하향 조정
                             speed_queue.append(speed)
+                            # 이동 평균으로 속도 스무딩
                             avg_speed = sum(speed_queue) / len(speed_queue)
+                            
+                            # 급격한 속도 변화 필터링
+                            if speeds and abs(avg_speed - speeds[-1]) > 10:
+                                avg_speed = speeds[-1]
                             
                             speeds.append(avg_speed)
                             frames.append(frame_count)
                             ball_positions[frame_count] = center
                             
-                            # 최고 속도 프레임 처리
-                            if avg_speed > current_max_speed:
-                                current_max_speed = avg_speed
+                            # 최고/최저 속도 프레임 처리
+                            if not speeds[:-1] or avg_speed > max(speeds[:-1]):
                                 frame_images[frame_count] = processed_frame.copy()
-                                st.write(f"New max speed: {avg_speed:.2f} m/s at frame {frame_count}")
-                            
-                            # 최저 속도 프레임 처리
-                            if avg_speed < current_min_speed:
-                                current_min_speed = avg_speed
+                            if not speeds[:-1] or avg_speed < min(speeds[:-1]):
                                 frame_images[frame_count] = processed_frame.copy()
-                                st.write(f"New min speed: {avg_speed:.2f} m/s at frame {frame_count}")
                             
                             real_time_speed.markdown(f"### Current Speed\n{avg_speed:.2f} m/s")
             
