@@ -1199,22 +1199,20 @@ def resize_frame(frame, target_width=384):
 
 def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers, 
                  classes, lower_color, upper_color, graph_color, trend_color):
-    """비디오 처리 및 분석"""
+    """비디오 처리 및 분석 - 최적화 버전"""
     global real_time_speed
     
     frame_images = {}
     video = cv2.VideoCapture(video_path)
     fps = video.get(cv2.CAP_PROP_FPS)
-    
-    # 전체 프레임 수 가져오기
     total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+    
     if total_frames <= 0:
         st.error("비디오 프레임 수를 읽을 수 없습니다.")
         return
-        
-    # Streamlit 레이아웃 설정
+
+    # 레이아웃 설정
     col1, col2 = st.columns([2, 1])
-    
     with col1:
         video_frame = st.empty()
     with col2:
@@ -1225,61 +1223,45 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
     speeds = []
     ball_positions = {}
     
-    # 최고/최저 속도 추적을 위한 변수들
-    current_max_speed = float('-inf')
-    current_min_speed = float('inf')
-    max_speed_frames = []
-    min_speed_frames = []
-    MAX_PEAKS = 3
-    
     # 트래커 초기화
     tracker = create_stable_tracker()
     if tracker is None:
-        st.error("트래커를 생성할 수 없습니다. 프로그램을 종료합니다.")
+        st.error("트래커를 생성할 수 없습니다.")
         return
 
-    # 첫 프레임 읽기
+    # 첫 프레임 처리
     ret, first_frame = video.read()
     if not ret:
-        st.error("비디오 첫 프레임을 읽을 수 없습니다.")
+        st.error("비디오를 읽을 수 없습니다.")
         return
 
     bbox = initial_bbox
     first_frame = resize_frame(first_frame)
 
-    # YOLO 검출 시도
     try:
         yolo_bbox = detect_ball_with_yolo(first_frame, net, output_layers, classes)
         if yolo_bbox is not None:
             bbox = yolo_bbox
+        tracker.init(first_frame, bbox)
     except Exception as e:
-        st.warning(f"YOLO 검출 중 오류가 발생했지만, 색상 기반 추적을 계속합니다.")
-
-    # 트래커 초기화
-    try:
-        init_success = tracker.init(first_frame, bbox)
-        if not init_success:
-            st.warning("트래커 초기화 실패, 단순 추적으로 계속합니다.")
-    except Exception as e:
-        st.error(f"트래커 초기화 중 오류 발생: {str(e)}")
+        st.warning("초기화 중 오류가 발생했지만, 계속 진행합니다.")
 
     # 변수 초기화
     prev_pos = None
-    speed_queue = deque(maxlen=5)  # 최근 5개 프레임의 속도를 저장
-    positions_queue = deque(maxlen=5)  # 최근 5개 프레임의 위치를 저장
+    speed_queue = deque(maxlen=5)
+    positions_queue = deque(maxlen=5)
     frame_count = 0
-
+    
     # 진행 상태 표시
     progress_bar = st.progress(0)
     status_text = st.empty()
 
-    # FPS 제어 변수
-    frame_interval = 1.0 / fps
-    frame_time = time.time()
-    update_interval = 1.0 / 30  # 화면 갱신 주기 (30fps)
-    last_update = time.time()
+    # 디스플레이 제어 변수
+    DISPLAY_INTERVAL = 2  # 몇 프레임마다 화면을 업데이트할지
+    SPEED_UPDATE_INTERVAL = 5  # 몇 프레임마다 속도를 업데이트할지
+    PROGRESS_UPDATE_INTERVAL = 30  # 몇 프레임마다 진행률을 업데이트할지
 
-    st.write("영상 처리 중... (실시간 재생)")
+    st.write("영상 처리 중...")
     video.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
     while True:
@@ -1288,7 +1270,6 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
             break
 
         try:
-            # 프레임 처리
             frame = resize_frame(frame)
             processed_frame, center, bbox = track_ball(frame, tracker, bbox, lower_color, upper_color, 10, 50)
             
@@ -1298,7 +1279,6 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 if len(positions_queue) >= 2:
                     first_frame, first_pos = positions_queue[0]
                     last_frame, last_pos = positions_queue[-1]
-                    
                     time_diff = (last_frame - first_frame) / fps
                     
                     if time_diff > 0:
@@ -1321,41 +1301,36 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                             frames.append(frame_count)
                             ball_positions[frame_count] = center
                             
-                            if not speeds[:-1] or avg_speed > max(speeds[:-1]):
-                                frame_images[frame_count] = processed_frame.copy()
-                            if not speeds[:-1] or avg_speed < min(speeds[:-1]):
+                            # 최고/최저 속도 프레임만 저장
+                            if not speeds[:-1] or avg_speed > max(speeds[:-1]) or avg_speed < min(speeds[:-1]):
                                 frame_images[frame_count] = processed_frame.copy()
 
-            # 화면 갱신 제어
-            current_time = time.time()
-            if current_time - last_update >= update_interval:
+            # 화면 업데이트 (일정 간격으로)
+            if frame_count % DISPLAY_INTERVAL == 0:
                 video_frame.image(processed_frame, channels="BGR", use_column_width=False)
-                if len(speeds) > 0:
-                    real_time_speed.markdown(f"### Current Speed\n{speeds[-1]:.2f} m/s")
-                    if frame_count % 5 == 0:
-                        update_charts(frames[-100:], speeds[-100:], speed_chart, frame_count, 
-                                    graph_color, trend_color, is_final=False, fps=fps)
-                last_update = current_time
-
+            
+            # 속도 표시 업데이트
+            if frame_count % SPEED_UPDATE_INTERVAL == 0 and speeds:
+                real_time_speed.markdown(f"### Current Speed\n{speeds[-1]:.2f} m/s")
+                
             # 진행률 업데이트
-            if frame_count % 10 == 0:  # 진행률은 10프레임마다 업데이트
+            if frame_count % PROGRESS_UPDATE_INTERVAL == 0:
                 progress = int((frame_count / total_frames) * 100)
                 progress_bar.progress(progress)
                 status_text.text(f"처리 중: {frame_count}/{total_frames} 프레임 ({progress}%)")
 
         except Exception as e:
-            st.error(f"프레임 {frame_count} 처리 중 오류 발생: {str(e)}")
             if 'bbox' not in locals():
                 bbox = initial_bbox
+            continue
 
         frame_count += 1
 
     video.release()
     status_text.text("영상 처리가 완료되었습니다!")
 
-    # 분석 결과 표시
+    # 최종 결과 표시
     if speeds:
-        st.write(f"분석된 총 프레임 수: {len(frames)}")
         update_charts(frames, speeds, speed_chart, frame_count, 
                      graph_color, trend_color, is_final=True,
                      frame_images=frame_images,
