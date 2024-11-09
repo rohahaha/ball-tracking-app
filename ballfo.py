@@ -17,7 +17,7 @@ from streamlit_image_coordinates import streamlit_image_coordinates
 
 # Streamlit 페이지 설정 (반드시 다른 st 명령어보다 먼저 와야 함)
 st.set_page_config(
-    page_title="공 추적 및 에너지 분석기",
+    page_title="객체 탐지 및 속도 분석기",
     page_icon="🎾",
     layout="wide",
     initial_sidebar_state="auto",
@@ -46,7 +46,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # 앱 제목
-st.title('물체/공 속도 추적 프로그램_by ROHA')
+st.title('객체 탐지 및 속도 추적 프로그램_by ROHA')
 
 # 세션 상태 초기화 - 여기에 필요한 변수들 추가
 if 'initialized' not in st.session_state:
