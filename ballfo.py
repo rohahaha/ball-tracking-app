@@ -796,31 +796,55 @@ def track_ball(frame, tracker, bbox, lower_color, upper_color, min_radius, max_r
     
     return frame, center, bbox
 
-def calculate_speed(prev_pos, curr_pos, fps, pixels_per_meter):
-    """속도 계산 - 스케일링 조정"""
+def calculate_frame_speed(positions_queue, fps, pixels_per_meter):
+    """개별 프레임의 속도 계산"""
     try:
-        # 픽셀 단위 거리 계산
-        distance = np.sqrt((curr_pos[0] - prev_pos[0])**2 + (curr_pos[1] - prev_pos[1])**2)
+        first_frame, first_pos = positions_queue[0]
+        last_frame, last_pos = positions_queue[-1]
         
-        # 미터 단위로 변환 (보정 계수 0.5 적용)
-        distance_meters = (distance / pixels_per_meter) * 0.5
-        
-        # 시간 간격
-        time_interval = 1.0 / fps
-        
-        # 속도 계산 (m/s)
-        speed = distance_meters / time_interval
-        
-        # 비정상적으로 높은 속도 필터링 (예: 50 m/s 이상)
-        if speed > 50:
-            return 0
+        time_diff = (last_frame - first_frame) / fps
+        if time_diff <= 0:
+            return None
             
-        return speed
+        distance = np.sqrt(
+            (last_pos[0] - first_pos[0])**2 + 
+            (last_pos[1] - first_pos[1])**2
+        )
         
-    except Exception as e:
-        st.error(f"속도 계산 중 오류: {str(e)}")
-        return 0
+        distance_meters = (distance / pixels_per_meter) * 0.5
+        speed = distance_meters / time_diff
         
+        # 비정상적인 속도 필터링
+        return speed if speed <= 50 else None
+        
+    except Exception:
+        return None
+        
+def calculate_filtered_speed(speed_queue, speeds):
+    """속도 필터링 및 평균 계산"""
+    try:
+        avg_speed = sum(speed_queue) / len(speed_queue)
+        
+        # 급격한 속도 변화 필터링
+        if speeds and abs(avg_speed - speeds[-1]) > 10:
+            return speeds[-1]
+            
+        return avg_speed
+        
+    except Exception:
+        return speeds[-1] if speeds else 0
+
+def is_significant_frame(current_speed, speeds):
+    """중요 프레임 판단 (최고/최저 속도 등)"""
+    if not speeds:
+        return True
+    
+    return (
+        abs(current_speed - speeds[-1]) > 2 or  # 급격한 속도 변화
+        current_speed > max(speeds) or  # 최고 속도
+        current_speed < min(speeds)  # 최저 속도
+    )
+
 
 def rgb_to_hsv(r, g, b):
     """RGB to HSV 변환"""
@@ -1214,176 +1238,157 @@ def resize_frame(frame, target_width=384):
 
 def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers, 
                  classes, lower_color, upper_color, graph_color):
-    """비디오 처리 및 분석"""
-    global real_time_speed
-    
-    frame_images = {}
-    video = cv2.VideoCapture(video_path)
-    fps = video.get(cv2.CAP_PROP_FPS)
-    
-    # 전체 프레임 수 가져오기
-    total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-    if total_frames <= 0:
-        st.error("비디오 프레임 수를 읽을 수 없습니다.")
-        return
+    """비디오 처리 및 분석 - 개선된 버전"""
+    try:
+        # 메모리 관리를 위한 윈도우 크기 설정
+        MEMORY_WINDOW = 300  # 저장할 최대 프레임 수
+        frame_images = {}
+        ball_positions = {}
         
-    # Streamlit 레이아웃 설정
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        video_frame = st.empty()
-    with col2:
-        real_time_speed = st.empty()
-        speed_chart = st.empty()
-
-    frames = []
-    speeds = []
-    ball_positions = {}
-    
-    # 최고/최저 속도 추적을 위한 변수들
-    current_max_speed = float('-inf')
-    current_min_speed = float('inf')
-    max_speed_frames = []
-    min_speed_frames = []
-    MAX_PEAKS = 3
-    
-    # 트래커 초기화
-    tracker = create_stable_tracker()
-    if tracker is None:
-        st.error("트래커를 생성할 수 없습니다. 프로그램을 종료합니다.")
-        return
-
-    # 첫 프레임 읽기
-    ret, first_frame = video.read()
-    if not ret:
-        st.error("비디오 첫 프레임을 읽을 수 없습니다.")
-        return
-
-    bbox = initial_bbox
-    first_frame = resize_frame(first_frame)
-
-    # YOLO 검출 시도
-    try:
-        yolo_bbox = detect_ball_with_yolo(first_frame, net, output_layers, classes)
-        if yolo_bbox is not None:
-            bbox = yolo_bbox
-    except Exception as e:
-        st.warning(f"YOLO 검출 중 오류가 발생했지만, 색상 기반 추적을 계속합니다.")
-
-    # 트래커 초기화
-    try:
-        init_success = tracker.init(first_frame, bbox)
-        if not init_success:
-            st.warning("트래커 초기화 실패, 단순 추적으로 계속합니다.")
-    except Exception as e:
-        st.error(f"트래커 초기화 중 오류 발생: {str(e)}")
-
-    # 변수 초기화
-    prev_pos = None
-    speed_queue = deque(maxlen=5)  # 최근 5개 프레임의 속도를 저장
-    positions_queue = deque(maxlen=5)  # 최근 5개 프레임의 위치를 저장
-    frame_count = 0
-
-    # 진행 상태 표시
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-
-    # FPS 제어
-    frame_interval = 1.0 / fps
-    last_frame_time = time.time()
-
-    st.write("영상 처리 중... (실시간 재생)")
-    video.set(cv2.CAP_PROP_POS_FRAMES, 0)
-
-    while True:
-        ret, frame = video.read()
-        if not ret:
-            break
-
+        video = None
         try:
-            current_time = time.time()
-            elapsed = current_time - last_frame_time
-            if elapsed < frame_interval:
-                time.sleep(frame_interval - elapsed)
-            last_frame_time = time.time()
-            
-            frame = resize_frame(frame)
-            processed_frame, center, bbox = track_ball(frame, tracker, bbox, lower_color, upper_color, 10, 50)
-            
-            if center:
-                positions_queue.append((frame_count, center))
+            video = cv2.VideoCapture(video_path)
+            if not video.isOpened():
+                raise ValueError("비디오를 열 수 없습니다")
                 
-                if len(positions_queue) >= 2:
-                    # 첫 번째와 마지막 위치로 속도 계산
-                    first_frame, first_pos = positions_queue[0]
-                    last_frame, last_pos = positions_queue[-1]
-                    
-                    # 프레임 간격으로 실제 시간 계산
-                    time_diff = (last_frame - first_frame) / fps
-                    
-                    if time_diff > 0:
-                        # 거리 계산
-                        distance = np.sqrt(
-                            (last_pos[0] - first_pos[0])**2 + 
-                            (last_pos[1] - first_pos[1])**2
-                        )
-                        
-                        # 보정된 거리 계산
-                        distance_meters = (distance / pixels_per_meter) * 0.5
-                        speed = distance_meters / time_diff
-                        
-                        if speed <= 50:  # 속도 임계값 하향 조정
-                            speed_queue.append(speed)
-                            # 이동 평균으로 속도 스무딩
-                            avg_speed = sum(speed_queue) / len(speed_queue)
-                            
-                            # 급격한 속도 변화 필터링
-                            if speeds and abs(avg_speed - speeds[-1]) > 10:
-                                avg_speed = speeds[-1]
-                            
-                            speeds.append(avg_speed)
-                            frames.append(frame_count)
-                            ball_positions[frame_count] = center
-                            
-                            # 최고/최저 속도 프레임 처리
-                            if not speeds[:-1] or avg_speed > max(speeds[:-1]):
-                                frame_images[frame_count] = processed_frame.copy()
-                            if not speeds[:-1] or avg_speed < min(speeds[:-1]):
-                                frame_images[frame_count] = processed_frame.copy()
-                            
-                            real_time_speed.markdown(f"### Current Speed\n{avg_speed:.2f} m/s")
+            fps = video.get(cv2.CAP_PROP_FPS)
+            total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
             
-            video_frame.image(processed_frame, channels="BGR", use_column_width=False)
+            # Streamlit 레이아웃 설정
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                video_frame = st.empty()
+            with col2:
+                real_time_speed = st.empty()
+                speed_chart = st.empty()
 
-        except Exception as e:
-            st.error(f"프레임 {frame_count} 처리 중 오류 발생: {str(e)}")
-            if 'bbox' not in locals():
-                bbox = initial_bbox
+            frames = []
+            speeds = []
+            
+            # 트래커 초기화
+            tracker = create_stable_tracker()
+            if tracker is None:
+                raise ValueError("트래커를 생성할 수 없습니다")
 
-        frame_count += 1
-        progress = int((frame_count / total_frames) * 100)
-        progress_bar.progress(progress)
-        status_text.text(f"처리 중: {frame_count}/{total_frames} 프레임 ({progress}%)")
-
-    video.release()
-    status_text.text("영상 처리가 완료되었습니다!")
-
-    # 분석 결과 표시
-    if speeds:
-        st.write(f"분석된 총 프레임 수: {len(frames)}")  # 디버깅용
-        update_charts(frames, speeds, speed_chart, frame_count, 
-                     graph_color, is_final=True,
-                     frame_images=frame_images,
-                     ball_positions=ball_positions,
-                     fps=fps)
-    else:
-        st.warning("속도 데이터가 기록되지 않았습니다.")
-
+            # 속도 계산을 위한 변수들
+            speed_queue = deque(maxlen=5)
+            positions_queue = deque(maxlen=5)
+            frame_count = 0
+            
+            # 진행 상태 표시
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            # 프레임 처리 루프
+            while True:
+                ret, frame = video.read()
+                if not ret:
+                    break
+                    
+                try:
+                    # 메모리 관리: 오래된 프레임 제거
+                    if frame_count > MEMORY_WINDOW:
+                        old_frame = frame_count - MEMORY_WINDOW
+                        if old_frame in frame_images:
+                            del frame_images[old_frame]
+                        if old_frame in ball_positions:
+                            del ball_positions[old_frame]
+                    
+                    frame = resize_frame(frame)
+                    if frame is None:
+                        raise ValueError("프레임 리사이즈 실패")
+                        
+                    processed_frame, center, bbox = track_ball(
+                        frame, tracker, bbox, lower_color, upper_color, 10, 50
+                    )
+                    
+                    if center:
+                        positions_queue.append((frame_count, center))
+                        
+                        if len(positions_queue) >= 2:
+                            # 속도 계산 및 필터링
+                            speed = calculate_frame_speed(
+                                positions_queue, fps, pixels_per_meter
+                            )
+                            
+                            if speed is not None:
+                                speed_queue.append(speed)
+                                avg_speed = calculate_filtered_speed(speed_queue, speeds)
+                                
+                                speeds.append(avg_speed)
+                                frames.append(frame_count)
+                                ball_positions[frame_count] = center
+                                
+                                # 중요 프레임만 저장
+                                if is_significant_frame(avg_speed, speeds):
+                                    frame_images[frame_count] = processed_frame.copy()
+                                
+                                real_time_speed.markdown(
+                                    f"### Current Speed\n{avg_speed:.2f} m/s"
+                                )
+                    
+                    video_frame.image(processed_frame, channels="BGR", use_column_width=False)
+                    
+                except Exception as e:
+                    st.warning(f"프레임 {frame_count} 처리 중 오류: {str(e)}")
+                    continue
+                
+                # 진행률 업데이트
+                frame_count += 1
+                progress = int((frame_count / total_frames) * 100)
+                progress_bar.progress(progress)
+                status_text.text(f"처리 중: {frame_count}/{total_frames} 프레임 ({progress}%)")
+                
+            # 결과 분석 및 표시
+            if speeds:
+                update_charts(frames, speeds, speed_chart, frame_count,
+                            graph_color, is_final=True,
+                            frame_images=frame_images,
+                            ball_positions=ball_positions,
+                            fps=fps)
+            else:
+                st.warning("속도 데이터가 기록되지 않았습니다")
+                
+        finally:
+            # 리소스 정리
+            if video is not None:
+                video.release()
+            
+            # 메모리 정리
+            frame_images.clear()
+            ball_positions.clear()
+            
+    except Exception as e:
+        st.error(f"비디오 처리 중 심각한 오류 발생: {str(e)}")
+        st.error(traceback.format_exc())
         
 def process_uploaded_video(uploaded_file, net, output_layers, classes):
     """업로드된 비디오 처리"""
     try:
-        if 'video_settings' not in st.session_state:
+        if 'video_settings' not in st.session_state:def calculate_frame_speed(positions_queue, fps, pixels_per_meter):
+    """개별 프레임의 속도 계산"""
+    try:
+        first_frame, first_pos = positions_queue[0]
+        last_frame, last_pos = positions_queue[-1]
+        
+        time_diff = (last_frame - first_frame) / fps
+        if time_diff <= 0:
+            return None
+            
+        distance = np.sqrt(
+            (last_pos[0] - first_pos[0])**2 + 
+            (last_pos[1] - first_pos[1])**2
+        )
+        
+        distance_meters = (distance / pixels_per_meter) * 0.5
+        speed = distance_meters / time_diff
+        
+        # 비정상적인 속도 필터링
+        return speed if speed <= 50 else None
+        
+    except Exception:
+        return None
             st.session_state.video_settings = {}
 
         tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
@@ -1510,24 +1515,46 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
         st.error(traceback.format_exc())
         
 def main():
-    """메인 실행 함수"""
-    st.write(f"OpenCV 버전: {cv2.__version__}")
-    
-    # YOLO 모델 초기화
-    net, output_layers, classes = initialize_yolo()
-    if not all([net, output_layers, classes]):
-        st.error("YOLO 모델 초기화 실패")
-        return
+    """메인 함수 - 세션 상태 관리 개선"""
+    try:
+        # 세션 상태 초기화
+        if 'initialized' not in st.session_state:
+            st.session_state.initialized = False
+            st.session_state.analysis_frames = []
+            st.session_state.analysis_speeds = []
+            st.session_state.analysis_images = {}
+            st.session_state.analysis_positions = {}
+            st.session_state.selected_frame = None
+            st.session_state.video_settings = {}
+            
+        # YOLO 모델 초기화
+        net, output_layers, classes = initialize_yolo()
+        if not all([net, output_layers, classes]):
+            st.error("YOLO 모델 초기화 실패")
+            return
 
-    # 파일 업로드
-    uploaded_file = st.file_uploader("비디오 파일을 선택하세요.", type=['mp4', 'avi', 'mov'])
-    
-    if uploaded_file is not None:
-        try:
-            process_uploaded_video(uploaded_file, net, output_layers, classes)
-        except Exception as e:
-            st.error(f"비디오 처리 중 오류 발생: {str(e)}")
-            st.error(traceback.format_exc())
-
+        # 파일 업로드
+        uploaded_file = st.file_uploader(
+            "비디오 파일을 선택하세요.", 
+            type=['mp4', 'avi', 'mov'],
+            key='video_upload'
+        )
+        
+        if uploaded_file is not None:
+            # 임시 파일 처리
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tfile:
+                try:
+                    tfile.write(uploaded_file.read())
+                    process_uploaded_video(tfile.name, net, output_layers, classes)
+                finally:
+                    try:
+                        os.unlink(tfile.name)
+                    except:
+                        pass
+                        
+    except Exception as e:
+        st.error(f"어플리케이션 실행 중 오류 발생: {str(e)}")
+        st.error(traceback.format_exc())
+        
 if __name__ == "__main__":
     main()
