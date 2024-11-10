@@ -796,8 +796,63 @@ def track_ball(frame, tracker, bbox, lower_color, upper_color, min_radius, max_r
     
     return frame, center, bbox
 
-def calculate_frame_speed(positions_queue, fps, pixels_per_meter):
-    """개별 프레임의 속도 계산"""
+def calculate_dynamic_correction(bbox_size, pixel_distance, real_distance):
+    """동적 보정 계수 계산"""
+    try:
+        base_correction = real_distance / pixel_distance
+        
+        # 공의 크기 변화에 따른 보정 (기준 크기 대비 현재 크기 비율)
+        if bbox_size > 0:
+            # 기준 크기는 첫 프레임의 bbox 크기
+            reference_size = 50  # 기본값, 실제 첫 프레임의 크기로 조정 가능
+            size_factor = reference_size / bbox_size
+            # 크기 변화가 너무 극단적이지 않도록 제한
+            size_factor = max(0.5, min(1.5, size_factor))
+        else:
+            size_factor = 1.0
+            
+        # 최종 보정 계수 계산
+        correction_factor = base_correction * size_factor
+        
+        # 보정 계수가 너무 극단적이지 않도록 제한
+        correction_factor = max(0.3, min(3.0, correction_factor))
+        
+        return correction_factor
+        
+    except Exception as e:
+        st.warning(f"보정 계수 계산 중 오류: {str(e)}")
+        return 1.0  # 오류 시 기본값 반환
+
+def filter_speed(speed_queue, speeds):
+    """개선된 속도 필터링"""
+    try:
+        if not speed_queue:
+            return 0
+            
+        # 이동 평균 계산    
+        avg_speed = sum(speed_queue) / len(speed_queue)
+        
+        # 급격한 변화 감지 및 보정
+        if speeds:
+            last_speed = speeds[-1]
+            
+            # 변화율 계산 (0에 의한 나눗셈 방지)
+            change_rate = abs(avg_speed - last_speed) / (last_speed + 1e-6)
+            
+            # 급격한 변화 시 보정 (30% 이상 변화)
+            if change_rate > 0.3:
+                # 이전 속도와 현재 속도의 가중 평균
+                return last_speed * 0.7 + avg_speed * 0.3
+                
+        return avg_speed
+        
+    except Exception as e:
+        st.warning(f"속도 필터링 중 오류: {str(e)}")
+        return speeds[-1] if speeds else 0  # 오류 시 이전 속도 반환
+
+
+def calculate_frame_speed(positions_queue, fps, pixels_per_meter, bbox_size=None):
+    """개별 프레임의 속도 계산 - 동적 보정 추가"""
     try:
         first_frame, first_pos = positions_queue[0]
         last_frame, last_pos = positions_queue[-1]
@@ -806,12 +861,26 @@ def calculate_frame_speed(positions_queue, fps, pixels_per_meter):
         if time_diff <= 0:
             return None
             
-        distance = np.sqrt(
+        # 픽셀 거리 계산
+        pixel_distance = np.sqrt(
             (last_pos[0] - first_pos[0])**2 + 
             (last_pos[1] - first_pos[1])**2
         )
         
-        distance_meters = (distance / pixels_per_meter) * 0.5
+        # 동적 보정 계수 계산
+        if bbox_size:
+            correction = calculate_dynamic_correction(
+                bbox_size, 
+                pixel_distance, 
+                1.0  # 기준 거리 (미터)
+            )
+        else:
+            correction = 0.5  # 기존 보정 계수
+        
+        # 미터 단위로 변환
+        distance_meters = (pixel_distance / pixels_per_meter) * correction
+        
+        # 속도 계산
         speed = distance_meters / time_diff
         
         # 비정상적인 속도 필터링
@@ -1342,12 +1411,15 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                         if len(positions_queue) >= 2:
                             # 속도 계산 및 필터링
                             speed = calculate_frame_speed(
-                                positions_queue, fps, pixels_per_meter
+                                positions_queue, 
+                                fps, 
+                                pixels_per_meter,
+                                bbox[2] if bbox else None
                             )
                             
                             if speed is not None:
                                 speed_queue.append(speed)
-                                avg_speed = calculate_filtered_speed(speed_queue, speeds)
+                                avg_speed = filter_speed(speed_queue, speeds)
                                 
                                 speeds.append(avg_speed)
                                 frames.append(frame_count)
