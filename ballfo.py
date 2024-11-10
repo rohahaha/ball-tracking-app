@@ -1363,131 +1363,139 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
         st.error(f"비디오 처리 중 심각한 오류 발생: {str(e)}")
         st.error(traceback.format_exc())
         
+
 def process_uploaded_video(uploaded_file, net, output_layers, classes):
-    """업로드된 비디오 처리"""
+    """업로드된 비디오 처리 - 파일 객체와 경로 문자열 모두 지원"""
     try:
         if 'video_settings' not in st.session_state:
             st.session_state.video_settings = {}
 
-        # 임시 파일 생성 및 처리
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tfile:
-            tfile.write(uploaded_file.read())
-            video_path = tfile.name
+        # 입력이 문자열(경로)인 경우와 파일 객체인 경우를 구분하여 처리
+        if isinstance(uploaded_file, str):
+            video_path = uploaded_file
+        else:
+            # 파일 객체인 경우 임시 파일로 저장
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tfile:
+                tfile.write(uploaded_file.read())
+                video_path = tfile.name
+
+        try:
+            video = cv2.VideoCapture(video_path)
+            if not video.isOpened():
+                raise ValueError("비디오를 열 수 없습니다.")
+
+            ret, first_frame = video.read()
+            video.release()
             
-            try:
-                video = cv2.VideoCapture(video_path)
-                ret, first_frame = video.read()
-                video.release()
+            if not ret or first_frame is None:
+                raise ValueError("비디오 프레임을 읽을 수 없습니다.")
                 
-                if not ret or first_frame is None:
-                    st.error("비디오 프레임을 읽을 수 없습니다.")
-                    return
-                    
-                # 첫 프레임 크기 조정
-                first_frame = resize_frame(first_frame)
-                if first_frame is None:
-                    st.error("프레임 처리 실패")
-                    return
-                    
+            # 첫 프레임 크기 조정
+            first_frame = resize_frame(first_frame)
+            if first_frame is None:
+                raise ValueError("프레임 처리 실패")
+                
+            # 비디오 표시 (업로드된 파일인 경우만)
+            if not isinstance(uploaded_file, str):
                 st.video(video_path)
+            
+            height, width = first_frame.shape[:2]
+            
+            # 그래프 설정
+            graph_color = st.radio(
+                "그래프 색상:",
+                ('white', 'black'),
+                key='graph_color'
+            )
+            
+            # 색상 선택
+            selected_color, lower_color, upper_color, click_pos = select_color_from_image(first_frame)
+            if not any([selected_color is None, lower_color is None, upper_color is None, click_pos is None]):
+                # video settings 업데이트
+                st.session_state.video_settings.update({
+                    'selected_color': selected_color,
+                    'lower_color': lower_color,
+                    'upper_color': upper_color,
+                    'click_pos': click_pos,
+                    'graph_color': graph_color
+                })
                 
-                height, width = first_frame.shape[:2]
-                
-                # 그래프 설정
-                graph_color = st.radio(
-                    "그래프 색상:",
-                    ('white', 'black'),
-                    key='graph_color'
-                )
-                
-                # 색상 선택
-                selected_color, lower_color, upper_color, click_pos = select_color_from_image(first_frame)
-                if not any([selected_color is None, lower_color is None, upper_color is None, click_pos is None]):
-                    # video settings 업데이트
+                if all(k in st.session_state.video_settings for k in 
+                      ['selected_color', 'lower_color', 'upper_color', 'click_pos']):
+                    # 거리 측정을 위한 점 선택
+                    settings_col1, settings_col2 = st.columns(2)
+                    
+                    with settings_col1:
+                        x1 = st.slider('첫 번째 점 X 좌표', 0, width, 
+                            st.session_state.video_settings.get('x1', width // 4))
+                        y1 = st.slider('첫 번째 점 Y 좌표', 0, height, 
+                            st.session_state.video_settings.get('y1', height // 2))
+                    
+                    with settings_col2:
+                        x2 = st.slider('두 번째 점 X 좌표', 0, width, 
+                            st.session_state.video_settings.get('x2', 3 * width // 4))
+                        y2 = st.slider('두 번째 점 Y 좌표', 0, height, 
+                            st.session_state.video_settings.get('y2', height // 2))
+                    
+                    # 프레임에 정보 표시
+                    frame_with_info = first_frame.copy()
+                    cv2.circle(frame_with_info, (x1, y1), 5, (0, 255, 0), -1)
+                    cv2.circle(frame_with_info, (x2, y2), 5, (0, 255, 0), -1)
+                    cv2.line(frame_with_info, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    
+                    # 선택한 색상 위치 표시
+                    click_x, click_y = st.session_state.video_settings['click_pos']
+                    selected_color = st.session_state.video_settings['selected_color']
+                    bbox_size = 50
+                    bbox_x = max(0, click_x - bbox_size//2)
+                    bbox_y = max(0, click_y - bbox_size//2)
+                    bbox_w = min(bbox_size, width - bbox_x)
+                    bbox_h = min(bbox_size, height - bbox_y)
+                    
+                    cv2.rectangle(frame_with_info, (bbox_x, bbox_y), 
+                                (bbox_x + bbox_w, bbox_y + bbox_h), (0, 255, 255), 2)
+                    cv2.circle(frame_with_info, (click_x, click_y), 5, tuple(map(int, selected_color)), -1)
+                    
+                    st.image(frame_with_info, channels="BGR", use_column_width=False)
+                    
+                    # 실제 거리 입력
+                    real_distance = st.number_input(
+                        "선택한 두 점 사이의 실제 거리(미터)를 입력해주세요:", 
+                        min_value=0.1, 
+                        value=st.session_state.video_settings.get('real_distance', 1.0), 
+                        step=0.1
+                    )
+                    
+                    # 설정값 저장
                     st.session_state.video_settings.update({
-                        'selected_color': selected_color,
-                        'lower_color': lower_color,
-                        'upper_color': upper_color,
-                        'click_pos': click_pos,
-                        'graph_color': graph_color
+                        'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
+                        'real_distance': real_distance
                     })
                     
-                    if all(k in st.session_state.video_settings for k in 
-                          ['selected_color', 'lower_color', 'upper_color', 'click_pos']):
-                        # 거리 측정을 위한 점 선택
-                        settings_col1, settings_col2 = st.columns(2)
-                        
-                        with settings_col1:
-                            x1 = st.slider('첫 번째 점 X 좌표', 0, width, 
-                                st.session_state.video_settings.get('x1', width // 4))
-                            y1 = st.slider('첫 번째 점 Y 좌표', 0, height, 
-                                st.session_state.video_settings.get('y1', height // 2))
-                        
-                        with settings_col2:
-                            x2 = st.slider('두 번째 점 X 좌표', 0, width, 
-                                st.session_state.video_settings.get('x2', 3 * width // 4))
-                            y2 = st.slider('두 번째 점 Y 좌표', 0, height, 
-                                st.session_state.video_settings.get('y2', height // 2))
-                        
-                        # 프레임에 정보 표시
-                        frame_with_info = first_frame.copy()
-                        cv2.circle(frame_with_info, (x1, y1), 5, (0, 255, 0), -1)
-                        cv2.circle(frame_with_info, (x2, y2), 5, (0, 255, 0), -1)
-                        cv2.line(frame_with_info, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                        
-                        # 선택한 색상 위치 표시
-                        click_x, click_y = st.session_state.video_settings['click_pos']
-                        selected_color = st.session_state.video_settings['selected_color']
-                        bbox_size = 50
-                        bbox_x = max(0, click_x - bbox_size//2)
-                        bbox_y = max(0, click_y - bbox_size//2)
-                        bbox_w = min(bbox_size, width - bbox_x)
-                        bbox_h = min(bbox_size, height - bbox_y)
-                        
-                        cv2.rectangle(frame_with_info, (bbox_x, bbox_y), 
-                                    (bbox_x + bbox_w, bbox_y + bbox_h), (0, 255, 255), 2)
-                        cv2.circle(frame_with_info, (click_x, click_y), 5, tuple(map(int, selected_color)), -1)
-                        
-                        st.image(frame_with_info, channels="BGR", use_column_width=False)
-                        
-                        # 실제 거리 입력
-                        real_distance = st.number_input(
-                            "선택한 두 점 사이의 실제 거리(미터)를 입력해주세요:", 
-                            min_value=0.1, 
-                            value=st.session_state.video_settings.get('real_distance', 1.0), 
-                            step=0.1
-                        )
-                        
-                        # 설정값 저장
-                        st.session_state.video_settings.update({
-                            'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
-                            'real_distance': real_distance
-                        })
-                        
-                        # pixels_per_meter 계산
-                        pixel_distance = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-                        pixels_per_meter = pixel_distance / real_distance
-                        st.write(f"계산된 pixels_per_meter: {pixels_per_meter:.2f}")
-                        
-                        # 분석 시작 버튼
-                        if st.button('영상 내 공 추적 및 분석 시작하기'):
-                            initial_bbox = (bbox_x, bbox_y, bbox_w, bbox_h)
-                            st.write("Processing video...")
-                            try:
-                                process_video(video_path, initial_bbox, pixels_per_meter, 
-                                           net, output_layers, classes, 
-                                           st.session_state.video_settings['lower_color'],
-                                           st.session_state.video_settings['upper_color'],
-                                           st.session_state.video_settings['graph_color'])
-                            except Exception as e:
-                                st.error(f"비디오 처리 중 오류 발생: {str(e)}")
-                                st.error(traceback.format_exc())
-                    else:
-                        st.warning("색상을 선택해주세요.")
-                        
-            finally:
-                if 'video' in locals():
-                    video.release()
+                    # pixels_per_meter 계산
+                    pixel_distance = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+                    pixels_per_meter = pixel_distance / real_distance
+                    st.write(f"계산된 pixels_per_meter: {pixels_per_meter:.2f}")
+                    
+                    # 분석 시작 버튼
+                    if st.button('영상 내 공 추적 및 분석 시작하기'):
+                        initial_bbox = (bbox_x, bbox_y, bbox_w, bbox_h)
+                        st.write("Processing video...")
+                        try:
+                            process_video(video_path, initial_bbox, pixels_per_meter, 
+                                       net, output_layers, classes, 
+                                       st.session_state.video_settings['lower_color'],
+                                       st.session_state.video_settings['upper_color'],
+                                       st.session_state.video_settings['graph_color'])
+                        except Exception as e:
+                            st.error(f"비디오 처리 중 오류 발생: {str(e)}")
+                            st.error(traceback.format_exc())
+                else:
+                    st.warning("색상을 선택해주세요.")
+                    
+        finally:
+            # 임시 파일 정리 (업로드된 파일인 경우만)
+            if not isinstance(uploaded_file, str) and 'video_path' in locals():
                 try:
                     os.unlink(video_path)
                 except:
@@ -1496,9 +1504,10 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
     except Exception as e:
         st.error(f"비디오 처리 중 오류 발생: {str(e)}")
         st.error(traceback.format_exc())
-        
+
+
 def main():
-    """메인 함수 - 세션 상태 관리 개선"""
+    """메인 함수 - 파일 업로드 처리 개선"""
     try:
         # 세션 상태 초기화
         if 'initialized' not in st.session_state:
@@ -1524,20 +1533,9 @@ def main():
         )
         
         if uploaded_file is not None:
-            # 임시 파일 처리
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tfile:
-                try:
-                    tfile.write(uploaded_file.read())
-                    process_uploaded_video(tfile.name, net, output_layers, classes)
-                finally:
-                    try:
-                        os.unlink(tfile.name)
-                    except:
-                        pass
-                        
+            process_uploaded_video(uploaded_file, net, output_layers, classes)
+                    
     except Exception as e:
         st.error(f"어플리케이션 실행 중 오류 발생: {str(e)}")
         st.error(traceback.format_exc())
         
-if __name__ == "__main__":
-    main()
