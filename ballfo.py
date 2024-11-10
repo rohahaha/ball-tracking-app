@@ -1238,14 +1238,19 @@ def resize_frame(frame, target_width=384):
 
 def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers, 
                  classes, lower_color, upper_color, graph_color):
-    """비디오 처리 및 분석 - bbox 초기화 오류 수정"""
+    """비디오 처리 및 분석 - 스크린샷 기능 추가"""
     try:
-        # 메모리 관리를 위한 윈도우 크기 설정
-        MEMORY_WINDOW = 300  # 저장할 최대 프레임 수
+        MEMORY_WINDOW = 300
         frame_images = {}
         ball_positions = {}
         
-        video = None
+        # 최고/최저 속도 프레임 저장을 위한 변수
+        max_speed_frame = None
+        min_speed_frame = None
+        max_speed_value = float('-inf')
+        min_speed_value = float('inf')
+        
+        video = None 
         try:
             video = cv2.VideoCapture(video_path)
             if not video.isOpened():
@@ -1347,8 +1352,19 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                                 speeds.append(avg_speed)
                                 frames.append(frame_count)
                                 ball_positions[frame_count] = center
+
+                                # 최고/최저 속도 프레임 저장
+                                if avg_speed > max_speed_value:
+                                    max_speed_value = avg_speed
+                                    max_speed_frame = processed_frame.copy()
+                                    frame_images[frame_count] = processed_frame.copy()
                                 
-                                # 중요 프레임만 저장
+                                if avg_speed < min_speed_value:
+                                    min_speed_value = avg_speed
+                                    min_speed_frame = processed_frame.copy()
+                                    frame_images[frame_count] = processed_frame.copy()
+                                
+                                # 중요 프레임 저장
                                 if is_significant_frame(avg_speed, speeds):
                                     frame_images[frame_count] = processed_frame.copy()
                                 
@@ -1370,29 +1386,93 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 progress = int((frame_count / total_frames) * 100)
                 progress_bar.progress(progress)
                 status_text.text(f"처리 중: {frame_count}/{total_frames} 프레임 ({progress}%)")
-                
-            # 결과 분석 및 표시
+
+            # 프레임 처리 루프가 끝난 후 결과 표시
             if speeds:
-                update_charts(frames, speeds, speed_chart, frame_count,
-                            graph_color, is_final=True,
-                            frame_images=frame_images,
-                            ball_positions=ball_positions,
-                            fps=fps)
+                st.markdown("### 📊 분석 결과")
+                
+                # 통계 표시
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("평균 속도", f"{np.mean(speeds):.2f} m/s")
+                with col2:
+                    st.metric("최고 속도", f"{max_speed_value:.2f} m/s")
+                with col3:
+                    st.metric("최저 속도", f"{min_speed_value:.2f} m/s")
+                with col4:
+                    total_time = frame_count / fps
+                    st.metric("총 분석 시간", f"{total_time:.2f} s")
+                
+                # 속도 그래프와 스크린샷을 나란히 표시
+                graph_col, images_col = st.columns([2, 1])
+                
+                with graph_col:
+                    # 그래프 표시 로직...
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        x=[frame/fps for frame in frames],
+                        y=speeds,
+                        mode='lines+markers',
+                        name='Speed (m/s)',
+                        line=dict(color=graph_color, width=2),
+                        marker=dict(size=4),
+                        hovertemplate='Time: %{x:.2f}s<br>Speed: %{y:.2f} m/s<extra></extra>'
+                    ))
+                    
+                    fig.update_layout(
+                        title="Ball Speed Analysis",
+                        xaxis_title="Time (s)",
+                        yaxis_title="Speed (m/s)",
+                        plot_bgcolor='white',
+                        paper_bgcolor='white',
+                        font=dict(color='black'),
+                        showlegend=True,
+                        height=500
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with images_col:
+                    # 최고 속도 프레임 표시
+                    if max_speed_frame is not None:
+                        st.markdown(f"#### 🔼 최고 속도: {max_speed_value:.2f} m/s")
+                        st.image(max_speed_frame, channels="BGR", use_column_width=True)
+                    
+                    # 최저 속도 프레임 표시
+                    if min_speed_frame is not None:
+                        st.markdown(f"#### 🔽 최저 속도: {min_speed_value:.2f} m/s")
+                        st.image(min_speed_frame, channels="BGR", use_column_width=True)
+                
+                # CSV 다운로드 버튼
+                df = pd.DataFrame({
+                    'Time (s)': [frame/fps for frame in frames],
+                    'Frame': frames,
+                    'Speed (m/s)': speeds
+                })
+                csv = df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    "📥 속도 데이터 다운로드 (CSV)",
+                    csv,
+                    "ball_speed_data.csv",
+                    "text/csv",
+                    key='download-csv-results'
+                )
+            
             else:
                 st.warning("속도 데이터가 기록되지 않았습니다")
                 
         finally:
-            # 리소스 정리
             if video is not None:
                 video.release()
-            
-            # 메모리 정리
-            frame_images.clear()
-            ball_positions.clear()
-            
+    
     except Exception as e:
         st.error(f"비디오 처리 중 심각한 오류 발생: {str(e)}")
         st.error(traceback.format_exc())
+        
+    finally:
+        # 메모리 정리
+        frame_images.clear()
+        ball_positions.clear()
         
 
 def process_uploaded_video(uploaded_file, net, output_layers, classes):
