@@ -1507,7 +1507,7 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
 
 
 def main():
-    """메인 함수 - 파일 업로드 처리 개선"""
+    """메인 함수 - 사용자 안내 개선"""
     try:
         # 세션 상태 초기화
         if 'initialized' not in st.session_state:
@@ -1519,15 +1519,33 @@ def main():
             st.session_state.selected_frame = None
             st.session_state.video_settings = {}
             
+        st.write("### 시작하기")
+        st.write("이 앱은 비디오에서 공의 움직임을 추적하고 속도를 분석합니다.")
+        
+        # YOLO 파일 확인
+        if not verify_yolo_files():
+            st.warning("⚠️ YOLO 모델 파일이 필요합니다. 아래 버튼을 클릭하여 다운로드해주세요.")
+            if st.button("YOLO 파일 다운로드", key="download_yolo"):
+                with st.spinner("YOLO 파일을 다운로드하는 중..."):
+                    if download_yolo_files():
+                        st.success("✅ YOLO 파일 다운로드 완료!")
+                        st.experimental_rerun()
+                    else:
+                        st.error("❌ YOLO 파일 다운로드 실패. 다시 시도해주세요.")
+            return
+
         # YOLO 모델 초기화
         net, output_layers, classes = initialize_yolo()
         if not all([net, output_layers, classes]):
             st.error("YOLO 모델 초기화 실패")
             return
 
+        st.write("### 비디오 업로드")
+        st.write("분석할 비디오 파일을 선택해주세요.")
+        
         # 파일 업로드
         uploaded_file = st.file_uploader(
-            "비디오 파일을 선택하세요.", 
+            "지원되는 형식: MP4, AVI, MOV", 
             type=['mp4', 'avi', 'mov'],
             key='video_upload'
         )
