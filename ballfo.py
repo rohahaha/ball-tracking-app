@@ -1507,7 +1507,7 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
 
 
 def main():
-    """메인 함수 - 사용자 안내 개선"""
+    """메인 함수 - 초기화 과정 표시 개선"""
     try:
         # 세션 상태 초기화
         if 'initialized' not in st.session_state:
@@ -1518,29 +1518,47 @@ def main():
             st.session_state.analysis_positions = {}
             st.session_state.selected_frame = None
             st.session_state.video_settings = {}
-            
-        st.write("### 시작하기")
+        
+        st.write("### 🎯 시작하기")
         st.write("이 앱은 비디오에서 공의 움직임을 추적하고 속도를 분석합니다.")
         
-        # YOLO 파일 확인
-        if not verify_yolo_files():
-            st.warning("⚠️ YOLO 모델 파일이 필요합니다. 아래 버튼을 클릭하여 다운로드해주세요.")
-            if st.button("YOLO 파일 다운로드", key="download_yolo"):
-                with st.spinner("YOLO 파일을 다운로드하는 중..."):
-                    if download_yolo_files():
+        # YOLO 디렉토리 생성
+        os.makedirs(YOLO_DIR, exist_ok=True)
+        
+        # YOLO 파일 존재 여부 확인
+        has_cfg = os.path.exists(os.path.join(YOLO_DIR, "yolov4.cfg"))
+        has_weights = os.path.exists(os.path.join(YOLO_DIR, "yolov4.weights"))
+        has_names = os.path.exists(os.path.join(YOLO_DIR, "coco.names"))
+        
+        if not all([has_cfg, has_weights, has_names]):
+            st.warning("⚠️ YOLO 모델 파일이 없습니다. 아래 버튼을 클릭하여 필요한 파일을 다운로드해주세요.")
+            
+            if st.button("🔽 YOLO 파일 다운로드", key="download_yolo"):
+                with st.spinner("YOLO 파일을 다운로드하는 중... (약 2-3분 소요)"):
+                    success = download_yolo_files()
+                    if success:
                         st.success("✅ YOLO 파일 다운로드 완료!")
+                        st.balloons()
                         st.experimental_rerun()
                     else:
                         st.error("❌ YOLO 파일 다운로드 실패. 다시 시도해주세요.")
             return
+        else:
+            st.success("✅ YOLO 모델 파일이 준비되었습니다.")
 
         # YOLO 모델 초기화
-        net, output_layers, classes = initialize_yolo()
-        if not all([net, output_layers, classes]):
-            st.error("YOLO 모델 초기화 실패")
-            return
+        with st.spinner("🔄 YOLO 모델을 초기화하는 중..."):
+            net, output_layers, classes = initialize_yolo()
+            if not all([net, output_layers, classes]):
+                st.error("❌ YOLO 모델 초기화 실패")
+                return
+            st.success("✅ YOLO 모델 초기화 완료!")
 
-        st.write("### 비디오 업로드")
+        # 구분선 추가
+        st.markdown("---")
+        
+        # 비디오 업로드 섹션
+        st.write("### 📹 비디오 업로드")
         st.write("분석할 비디오 파일을 선택해주세요.")
         
         # 파일 업로드
@@ -1551,9 +1569,13 @@ def main():
         )
         
         if uploaded_file is not None:
+            st.success(f"✅ 파일 '{uploaded_file.name}' 업로드 완료!")
             process_uploaded_video(uploaded_file, net, output_layers, classes)
                     
     except Exception as e:
-        st.error(f"어플리케이션 실행 중 오류 발생: {str(e)}")
+        st.error(f"❌ 어플리케이션 실행 중 오류 발생: {str(e)}")
         st.error(traceback.format_exc())
+
+if __name__ == "__main__":
+    main()
         
