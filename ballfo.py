@@ -1238,7 +1238,7 @@ def resize_frame(frame, target_width=384):
 
 def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers, 
                  classes, lower_color, upper_color, graph_color):
-    """비디오 처리 및 분석 - 개선된 버전"""
+    """비디오 처리 및 분석 - bbox 초기화 오류 수정"""
     try:
         # 메모리 관리를 위한 윈도우 크기 설정
         MEMORY_WINDOW = 300  # 저장할 최대 프레임 수
@@ -1271,6 +1271,27 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
             if tracker is None:
                 raise ValueError("트래커를 생성할 수 없습니다")
 
+            # bbox 초기화 - 중요!
+            bbox = initial_bbox
+            
+            # 첫 프레임에서 트래커 초기화
+            ret, first_frame = video.read()
+            if not ret:
+                raise ValueError("첫 프레임을 읽을 수 없습니다")
+                
+            first_frame = resize_frame(first_frame)
+            if first_frame is None:
+                raise ValueError("프레임 리사이즈 실패")
+                
+            # YOLO로 첫 프레임에서 공 감지 시도
+            detected_bbox = detect_ball_with_yolo(first_frame, net, output_layers, classes)
+            if detected_bbox is not None:
+                bbox = detected_bbox
+                st.success("YOLO가 공을 감지했습니다!")
+                
+            # 트래커 초기화
+            tracker.init(first_frame, bbox)
+
             # 속도 계산을 위한 변수들
             speed_queue = deque(maxlen=5)
             positions_queue = deque(maxlen=5)
@@ -1279,6 +1300,9 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
             # 진행 상태 표시
             progress_bar = st.progress(0)
             status_text = st.empty()
+            
+            # 비디오 처리 시작 지점으로 되감기
+            video.set(cv2.CAP_PROP_POS_FRAMES, 0)
             
             # 프레임 처리 루프
             while True:
@@ -1298,6 +1322,10 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                     frame = resize_frame(frame)
                     if frame is None:
                         raise ValueError("프레임 리사이즈 실패")
+                        
+                    # bbox가 설정되어 있는지 확인
+                    if bbox is None:
+                        raise ValueError("bbox가 설정되지 않았습니다")
                         
                     processed_frame, center, bbox = track_ball(
                         frame, tracker, bbox, lower_color, upper_color, 10, 50
@@ -1332,6 +1360,9 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                     
                 except Exception as e:
                     st.warning(f"프레임 {frame_count} 처리 중 오류: {str(e)}")
+                    # bbox 복구 시도
+                    if bbox is None:
+                        bbox = initial_bbox
                     continue
                 
                 # 진행률 업데이트
