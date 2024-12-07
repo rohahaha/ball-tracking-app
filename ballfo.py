@@ -914,6 +914,34 @@ def is_significant_frame(current_speed, speeds):
         current_speed < min(speeds)  # 최저 속도
     )
 
+def adjust_speed_for_gravity(frames, speeds, fps):
+    """
+    속도를 중력 기반으로 보정하고 추세선의 기울기를 반환합니다.
+    :param frames: 프레임 번호 리스트
+    :param speeds: 속도 리스트
+    :param fps: 초당 프레임 수
+    :return: 보정된 속도 리스트, 추세선의 기울기
+    """
+    try:
+        # 시간 계산
+        time_intervals = np.array([frame / fps for frame in frames])
+
+        # 속도 추세선 계산
+        coef = np.polyfit(time_intervals, speeds, 1)  # 1차 회귀선
+        trendline_slope = coef[0]  # 기울기 (m/s^2)
+
+        # 중력 가속도로 보정
+        gravity_factor = 9.8
+        adjustment_ratio = gravity_factor / trendline_slope
+        adjusted_speeds = np.array(speeds) * adjustment_ratio
+
+        return adjusted_speeds, trendline_slope
+
+    except Exception as e:
+        st.warning(f"속도 보정 중 오류 발생: {str(e)}")
+        return speeds, 0.0  # 오류 발생 시 원본 반환
+
+
 
 def rgb_to_hsv(r, g, b):
     """RGB to HSV 변환"""
