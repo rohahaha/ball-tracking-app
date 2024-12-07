@@ -848,36 +848,7 @@ def filter_speed(speed_queue, speeds):
         
     except Exception as e:
         st.warning(f"속도 필터링 중 오류: {str(e)}")
-        return speeds[-1] if speeds else 0  # 오류 시 이전 속도 반환        
-
-def adjust_speed_to_g(frames, speeds, fps):
-    """낙하 구간에서 속도를 수정하여 기울기가 9.8에 가까워지도록 조정"""
-    time = np.array(frames) / fps  # 시간 계산
-    adjusted_speeds = speeds.copy()
-
-    # 낙하 구간 탐지 및 보정
-    falling_indices = []
-    for i in range(1, len(speeds)):
-        if speeds[i] < speeds[i-1]:  # 속도가 감소하면 낙하 구간
-            falling_indices.append(i)
-
-    # 낙하 구간별 속도 조정
-    for i in range(1, len(falling_indices)):
-        start = falling_indices[i-1]
-        end = falling_indices[i]
-
-        # 현재 구간 시간과 속도
-        segment_time = time[start:end]
-        segment_speed = speeds[start:end]
-
-        # 속도를 재조정하여 기울기가 9.8에 가깝게 설정
-        initial_speed = segment_speed[0]
-        adjusted_segment_speed = initial_speed + 9.8 * (segment_time - segment_time[0])
-        
-        # 업데이트
-        adjusted_speeds[start:end] = adjusted_segment_speed
-
-    return adjusted_speeds
+        return speeds[-1] if speeds else 0  # 오류 시 이전 속도 반환
 
 
 def calculate_frame_speed(positions_queue, fps, pixels_per_meter, bbox_size=None):
@@ -943,34 +914,6 @@ def is_significant_frame(current_speed, speeds):
         current_speed < min(speeds)  # 최저 속도
     )
 
-def adjust_speed_for_gravity(frames, speeds, fps):
-    """
-    속도를 중력 기반으로 보정하고 추세선의 기울기를 반환합니다.
-    :param frames: 프레임 번호 리스트
-    :param speeds: 속도 리스트
-    :param fps: 초당 프레임 수
-    :return: 보정된 속도 리스트, 추세선의 기울기
-    """
-    try:
-        # 시간 계산
-        time_intervals = np.array([frame / fps for frame in frames])
-
-        # 속도 추세선 계산
-        coef = np.polyfit(time_intervals, speeds, 1)  # 1차 회귀선
-        trendline_slope = coef[0]  # 기울기 (m/s^2)
-
-        # 중력 가속도로 보정
-        gravity_factor = 9.8
-        adjustment_ratio = gravity_factor / trendline_slope
-        adjusted_speeds = np.array(speeds) * adjustment_ratio
-
-        return adjusted_speeds, trendline_slope
-
-    except Exception as e:
-        st.warning(f"속도 보정 중 오류 발생: {str(e)}")
-        return speeds, 0.0  # 오류 발생 시 원본 반환
-
-
 
 def rgb_to_hsv(r, g, b):
     """RGB to HSV 변환"""
@@ -980,7 +923,7 @@ def rgb_to_hsv(r, g, b):
 
 def update_charts(frames, speeds, speed_chart, frame_count, graph_color, 
                  is_final=False, frame_images=None, ball_positions=None, fps=30):
-    """차트 업데이트 - 중력 보정 및 추세선 추가"""
+    """차트 업데이트 - 디스플레이 수정"""
     try:
         # 기본 통계 계산
         avg_speed = np.mean(speeds)
@@ -988,22 +931,16 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color,
         min_speed = np.min(speeds)
         total_time = max([frame/fps for frame in frames])
         
-        # 속도 보정 및 추세선 계산
-        adjusted_speeds, adjustment_factor = adjust_speed_for_gravity(frames, speeds, fps)
-        
-        st.markdown("### 📏 속도 보정 결과")
-        st.write(f"초기 추정된 기울기: {adjustment_factor:.2f}")
-        
         if is_final:
             # 통계 표시
             st.markdown("### 전체 통계")
             cols = st.columns(4)
             with cols[0]:
-                st.metric("평균 속도", f"{np.mean(adjusted_speeds):.2f} m/s")
+                st.metric("평균 속도", f"{avg_speed:.2f} m/s")
             with cols[1]:
-                st.metric("최대 속도", f"{np.max(adjusted_speeds):.2f} m/s")
+                st.metric("최대 속도", f"{max_speed:.2f} m/s")
             with cols[2]:
-                st.metric("최소 속도", f"{np.min(adjusted_speeds):.2f} m/s")
+                st.metric("최소 속도", f"{min_speed:.2f} m/s")
             with cols[3]:
                 st.metric("총 분석 시간", f"{total_time:.2f} s")
 
@@ -1014,12 +951,12 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color,
                 # 그래프 생성
                 fig = go.Figure()
                 
-                # 보정된 속도 라인
+                # 메인 속도 라인
                 fig.add_trace(go.Scatter(
                     x=[frame/fps for frame in frames],
-                    y=adjusted_speeds,
+                    y=speeds,
                     mode='lines+markers',
-                    name='Speed (Adjusted)',
+                    name='Speed (m/s)',
                     line=dict(
                         color=graph_color,
                         width=2
@@ -1030,29 +967,31 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color,
                     hovertemplate='Time: %{x:.2f}s<br>Speed: %{y:.2f} m/s<extra></extra>'
                 ))
                 
-                # 추세선 추가
-                time_intervals = np.array([frame/fps for frame in frames])
-                coef = np.polyfit(time_intervals, adjusted_speeds, 1)
-                trendline = coef[0] * time_intervals + coef[1]
-                fig.add_trace(go.Scatter(
-                    x=time_intervals,
-                    y=trendline,
-                    mode='lines',
-                    name='Trendline (g)',
-                    line=dict(color='red', dash='dash'),
-                    hovertemplate='Time: %{x:.2f}s<br>Trendline: %{y:.2f} m/s<extra></extra>'
-                ))
-                
                 # 레이아웃 설정
                 fig.update_layout(
-                    title="Ball Speed Analysis (with Gravity Adjustment)",
+                    title="Ball Speed Analysis",
                     xaxis_title="Time (s)",
                     yaxis_title="Speed (m/s)",
                     plot_bgcolor='white',
                     paper_bgcolor='white',
                     font=dict(color='black'),
                     showlegend=True,
-                    height=500
+                    height=500,
+                    xaxis=dict(
+                        showgrid=True,
+                        gridcolor='lightgrey',
+                        showline=True,
+                        linewidth=1,
+                        linecolor='black'
+                    ),
+                    yaxis=dict(
+                        showgrid=True,
+                        gridcolor='lightgrey',
+                        showline=True,
+                        linewidth=1,
+                        linecolor='black',
+                        range=[0, max_speed * 1.1]  # y축 범위 설정
+                    )
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
@@ -1061,7 +1000,7 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color,
                 df = pd.DataFrame({
                     'Time (s)': [frame/fps for frame in frames],
                     'Frame': frames,
-                    'Speed (m/s)': adjusted_speeds
+                    'Speed (m/s)': speeds
                 })
                 csv = df.to_csv(index=False).encode('utf-8')
                 st.download_button(
@@ -1074,8 +1013,8 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color,
             
             with images_col:
                 # 최고/최저 속도 프레임 찾기
-                max_speed_indices = [i for i, s in enumerate(adjusted_speeds) if abs(s - max_speed) < 0.01]
-                min_speed_indices = [i for i, s in enumerate(adjusted_speeds) if abs(s - min_speed) < 0.01]
+                max_speed_indices = [i for i, s in enumerate(speeds) if abs(s - max_speed) < 0.01]
+                min_speed_indices = [i for i, s in enumerate(speeds) if abs(s - min_speed) < 0.01]
                 
                 if max_speed_indices and frame_images:
                     st.markdown(f"#### 최고 속도: {max_speed:.2f} m/s")
@@ -1096,7 +1035,7 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color,
         else:
             # 실시간 업데이트용 간단한 그래프
             last_100_frames = frames[-100:]
-            last_100_speeds = adjusted_speeds[-100:]
+            last_100_speeds = speeds[-100:]
             
             fig = go.Figure(go.Scatter(
                 x=[frame/fps for frame in last_100_frames],
@@ -1105,7 +1044,7 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color,
                 line=dict(color=graph_color)
             ))
             fig.update_layout(
-                title="Real-time Speed (Adjusted)",
+                title="Real-time Speed",
                 xaxis_title="Time (s)",
                 yaxis_title="Speed (m/s)",
                 height=300
@@ -1366,7 +1305,6 @@ def resize_frame(frame, target_width=384):
         st.error(f"프레임 리사이즈 중 오류 발생: {str(e)}")
         return frame  # 오류 발생시 원본 반환
 
-
 def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers, 
                  classes, lower_color, upper_color, graph_color):
     """비디오 처리 및 분석 - 스크린샷 기능 추가"""
@@ -1523,17 +1461,16 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
 
             # 프레임 처리 루프가 끝난 후 결과 표시
             if speeds:
-                # 낙하 구간별 속도를 보정
-                adjusted_speeds = adjust_speed_to_g(frames, speeds, fps)
-
                 st.markdown("### 📊 분석 결과")
+                
+                # 통계 표시
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    st.metric("평균 속도", f"{np.mean(adjusted_speeds):.2f} m/s")
+                    st.metric("평균 속도", f"{np.mean(speeds):.2f} m/s")
                 with col2:
-                    st.metric("최고 속도", f"{max(adjusted_speeds):.2f} m/s")
+                    st.metric("최고 속도", f"{max_speed_value:.2f} m/s")
                 with col3:
-                    st.metric("최저 속도", f"{min(adjusted_speeds):.2f} m/s")
+                    st.metric("최저 속도", f"{min_speed_value:.2f} m/s")
                 with col4:
                     total_time = frame_count / fps
                     st.metric("총 분석 시간", f"{total_time:.2f} s")
@@ -1546,16 +1483,16 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(
                         x=[frame/fps for frame in frames],
-                        y=adjusted_speeds,  # 보정된 속도를 사용
+                        y=speeds,
                         mode='lines+markers',
-                        name='Adjusted Speed (m/s)',
+                        name='Speed (m/s)',
                         line=dict(color=graph_color, width=2),
                         marker=dict(size=4),
                         hovertemplate='Time: %{x:.2f}s<br>Speed: %{y:.2f} m/s<extra></extra>'
                     ))
                     
                     fig.update_layout(
-                        title="Ball Speed Analysis (Adjusted)",
+                        title="Ball Speed Analysis",
                         xaxis_title="Time (s)",
                         yaxis_title="Speed (m/s)",
                         plot_bgcolor='white',
@@ -1570,25 +1507,25 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 with images_col:
                     # 최고 속도 프레임 표시
                     if max_speed_frame is not None:
-                        st.markdown(f"#### 🔼 최고 속도: {max(adjusted_speeds):.2f} m/s")
+                        st.markdown(f"#### 🔼 최고 속도: {max_speed_value:.2f} m/s")
                         st.image(max_speed_frame, channels="BGR", use_column_width=True)
                     
                     # 최저 속도 프레임 표시
                     if min_speed_frame is not None:
-                        st.markdown(f"#### 🔽 최저 속도: {min(adjusted_speeds):.2f} m/s")
+                        st.markdown(f"#### 🔽 최저 속도: {min_speed_value:.2f} m/s")
                         st.image(min_speed_frame, channels="BGR", use_column_width=True)
                 
                 # CSV 다운로드 버튼
                 df = pd.DataFrame({
                     'Time (s)': [frame/fps for frame in frames],
                     'Frame': frames,
-                    'Adjusted Speed (m/s)': adjusted_speeds
+                    'Speed (m/s)': speeds
                 })
                 csv = df.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     "📥 속도 데이터 다운로드 (CSV)",
                     csv,
-                    "ball_adjusted_speed_data.csv",
+                    "ball_speed_data.csv",
                     "text/csv",
                     key='download-csv-results'
                 )
@@ -1608,6 +1545,7 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
         # 메모리 정리
         frame_images.clear()
         ball_positions.clear()
+        
 
 def process_uploaded_video(uploaded_file, net, output_layers, classes):
     """업로드된 비디오 처리 - 파일 객체와 경로 문자열 모두 지원"""
@@ -1823,4 +1761,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-        
