@@ -845,6 +845,36 @@ def filter_speed(speed_queue, speeds):
                 return last_speed * 0.7 + avg_speed * 0.3
                 
         return avg_speed
+
+    def adjust_speed_to_g(frames, speeds, fps):
+    """낙하 구간에서 속도를 수정하여 기울기가 9.8에 가까워지도록 조정"""
+    time = np.array(frames) / fps  # 시간 계산
+    adjusted_speeds = speeds.copy()
+
+    # 낙하 구간 탐지 및 보정
+    falling_indices = []
+    for i in range(1, len(speeds)):
+        if speeds[i] < speeds[i-1]:  # 속도가 감소하면 낙하 구간
+            falling_indices.append(i)
+
+    # 낙하 구간별 속도 조정
+    for i in range(1, len(falling_indices)):
+        start = falling_indices[i-1]
+        end = falling_indices[i]
+
+        # 현재 구간 시간과 속도
+        segment_time = time[start:end]
+        segment_speed = speeds[start:end]
+
+        # 속도를 재조정하여 기울기가 9.8에 가깝게 설정
+        initial_speed = segment_speed[0]
+        adjusted_segment_speed = initial_speed + 9.8 * (segment_time - segment_time[0])
+        
+        # 업데이트
+        adjusted_speeds[start:end] = adjusted_segment_speed
+
+    return adjusted_speeds
+
         
     except Exception as e:
         st.warning(f"속도 필터링 중 오류: {str(e)}")
@@ -1493,16 +1523,48 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
 
             # 프레임 처리 루프가 끝난 후 결과 표시
             if speeds:
-                st.markdown("### 📊 분석 결과")
-                
+                # 추가: 낙하 구간별 기울기를 9.8에 맞추는 로직
+                def adjust_speed_to_g(frames, speeds, fps):
+                    """낙하 구간에서 속도를 수정하여 기울기가 9.8에 가깝게 만듦"""
+                    time = np.array(frames) / fps  # 시간 계산
+                    adjusted_speeds = speeds.copy()
+
+                    # 낙하 구간 탐지 및 보정
+                    falling_indices = []
+                    for i in range(1, len(speeds)):
+                        if speeds[i] < speeds[i-1]:  # 속도가 감소하면 낙하 구간
+                            falling_indices.append(i)
+
+                    # 낙하 구간별 속도 조정
+                    for i in range(1, len(falling_indices)):
+                        start = falling_indices[i-1]
+                        end = falling_indices[i]
+
+                        # 현재 구간 시간과 속도
+                        segment_time = time[start:end]
+                        segment_speed = speeds[start:end]
+
+                        # 속도를 재조정하여 기울기가 9.8에 가깝게 설정
+                        initial_speed = segment_speed[0]
+                        adjusted_segment_speed = initial_speed + 9.8 * (segment_time - segment_time[0])
+                        
+                        # 업데이트
+                        adjusted_speeds[start:end] = adjusted_segment_speed
+
+                    return adjusted_speeds
+
+                # 기존 속도를 보정하여 새로운 속도 데이터 생성
+                adjusted_speeds = adjust_speed_to_g(frames, speeds, fps)
+
                 # 통계 표시
+                st.markdown("### 📊 분석 결과")
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    st.metric("평균 속도", f"{np.mean(speeds):.2f} m/s")
+                    st.metric("평균 속도", f"{np.mean(adjusted_speeds):.2f} m/s")
                 with col2:
-                    st.metric("최고 속도", f"{max_speed_value:.2f} m/s")
+                    st.metric("최고 속도", f"{max(adjusted_speeds):.2f} m/s")
                 with col3:
-                    st.metric("최저 속도", f"{min_speed_value:.2f} m/s")
+                    st.metric("최저 속도", f"{min(adjusted_speeds):.2f} m/s")
                 with col4:
                     total_time = frame_count / fps
                     st.metric("총 분석 시간", f"{total_time:.2f} s")
@@ -1515,16 +1577,16 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(
                         x=[frame/fps for frame in frames],
-                        y=speeds,
+                        y=adjusted_speeds,  # 보정된 속도를 사용
                         mode='lines+markers',
-                        name='Speed (m/s)',
+                        name='Adjusted Speed (m/s)',
                         line=dict(color=graph_color, width=2),
                         marker=dict(size=4),
                         hovertemplate='Time: %{x:.2f}s<br>Speed: %{y:.2f} m/s<extra></extra>'
                     ))
                     
                     fig.update_layout(
-                        title="Ball Speed Analysis",
+                        title="Ball Speed Analysis (Adjusted)",
                         xaxis_title="Time (s)",
                         yaxis_title="Speed (m/s)",
                         plot_bgcolor='white',
@@ -1539,27 +1601,28 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 with images_col:
                     # 최고 속도 프레임 표시
                     if max_speed_frame is not None:
-                        st.markdown(f"#### 🔼 최고 속도: {max_speed_value:.2f} m/s")
+                        st.markdown(f"#### 🔼 최고 속도: {max(adjusted_speeds):.2f} m/s")
                         st.image(max_speed_frame, channels="BGR", use_column_width=True)
                     
                     # 최저 속도 프레임 표시
                     if min_speed_frame is not None:
-                        st.markdown(f"#### 🔽 최저 속도: {min_speed_value:.2f} m/s")
+                        st.markdown(f"#### 🔽 최저 속도: {min(adjusted_speeds):.2f} m/s")
                         st.image(min_speed_frame, channels="BGR", use_column_width=True)
                 
                 # CSV 다운로드 버튼
                 df = pd.DataFrame({
                     'Time (s)': [frame/fps for frame in frames],
                     'Frame': frames,
-                    'Speed (m/s)': speeds
+                    'Original Speed (m/s)': speeds,  # 원래 속도
+                    'Adjusted Speed (m/s)': adjusted_speeds,  # 보정된 속도
                 })
                 csv = df.to_csv(index=False).encode('utf-8')
                 st.download_button(
-                    "📥 속도 데이터 다운로드 (CSV)",
+                    "📥 보정된 속도 데이터 다운로드 (CSV)",
                     csv,
-                    "ball_speed_data.csv",
+                    "adjusted_ball_speed_data.csv",
                     "text/csv",
-                    key='download-csv-results'
+                    key='download-adjusted-csv-results'
                 )
             
             else:
