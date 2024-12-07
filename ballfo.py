@@ -845,6 +845,10 @@ def filter_speed(speed_queue, speeds):
                 return last_speed * 0.7 + avg_speed * 0.3
                 
         return avg_speed
+        
+    except Exception as e:
+        st.warning(f"속도 필터링 중 오류: {str(e)}")
+        return speeds[-1] if speeds else 0  # 오류 시 이전 속도 반환        
 
     def adjust_speed_to_g(frames, speeds, fps):
     """낙하 구간에서 속도를 수정하여 기울기가 9.8에 가까워지도록 조정"""
@@ -874,11 +878,6 @@ def filter_speed(speed_queue, speeds):
         adjusted_speeds[start:end] = adjusted_segment_speed
 
     return adjusted_speeds
-
-        
-    except Exception as e:
-        st.warning(f"속도 필터링 중 오류: {str(e)}")
-        return speeds[-1] if speeds else 0  # 오류 시 이전 속도 반환
 
 
 def calculate_frame_speed(positions_queue, fps, pixels_per_meter, bbox_size=None):
@@ -1367,6 +1366,7 @@ def resize_frame(frame, target_width=384):
         st.error(f"프레임 리사이즈 중 오류 발생: {str(e)}")
         return frame  # 오류 발생시 원본 반환
 
+
 def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers, 
                  classes, lower_color, upper_color, graph_color):
     """비디오 처리 및 분석 - 스크린샷 기능 추가"""
@@ -1523,40 +1523,9 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
 
             # 프레임 처리 루프가 끝난 후 결과 표시
             if speeds:
-                # 추가: 낙하 구간별 기울기를 9.8에 맞추는 로직
-                def adjust_speed_to_g(frames, speeds, fps):
-                    """낙하 구간에서 속도를 수정하여 기울기가 9.8에 가깝게 만듦"""
-                    time = np.array(frames) / fps  # 시간 계산
-                    adjusted_speeds = speeds.copy()
-
-                    # 낙하 구간 탐지 및 보정
-                    falling_indices = []
-                    for i in range(1, len(speeds)):
-                        if speeds[i] < speeds[i-1]:  # 속도가 감소하면 낙하 구간
-                            falling_indices.append(i)
-
-                    # 낙하 구간별 속도 조정
-                    for i in range(1, len(falling_indices)):
-                        start = falling_indices[i-1]
-                        end = falling_indices[i]
-
-                        # 현재 구간 시간과 속도
-                        segment_time = time[start:end]
-                        segment_speed = speeds[start:end]
-
-                        # 속도를 재조정하여 기울기가 9.8에 가깝게 설정
-                        initial_speed = segment_speed[0]
-                        adjusted_segment_speed = initial_speed + 9.8 * (segment_time - segment_time[0])
-                        
-                        # 업데이트
-                        adjusted_speeds[start:end] = adjusted_segment_speed
-
-                    return adjusted_speeds
-
-                # 기존 속도를 보정하여 새로운 속도 데이터 생성
+                # 낙하 구간별 속도를 보정
                 adjusted_speeds = adjust_speed_to_g(frames, speeds, fps)
 
-                # 통계 표시
                 st.markdown("### 📊 분석 결과")
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
@@ -1613,16 +1582,15 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 df = pd.DataFrame({
                     'Time (s)': [frame/fps for frame in frames],
                     'Frame': frames,
-                    'Original Speed (m/s)': speeds,  # 원래 속도
-                    'Adjusted Speed (m/s)': adjusted_speeds,  # 보정된 속도
+                    'Adjusted Speed (m/s)': adjusted_speeds
                 })
                 csv = df.to_csv(index=False).encode('utf-8')
                 st.download_button(
-                    "📥 보정된 속도 데이터 다운로드 (CSV)",
+                    "📥 속도 데이터 다운로드 (CSV)",
                     csv,
-                    "adjusted_ball_speed_data.csv",
+                    "ball_adjusted_speed_data.csv",
                     "text/csv",
-                    key='download-adjusted-csv-results'
+                    key='download-csv-results'
                 )
             
             else:
@@ -1640,7 +1608,6 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
         # 메모리 정리
         frame_images.clear()
         ball_positions.clear()
-        
 
 def process_uploaded_video(uploaded_file, net, output_layers, classes):
     """업로드된 비디오 처리 - 파일 객체와 경로 문자열 모두 지원"""
