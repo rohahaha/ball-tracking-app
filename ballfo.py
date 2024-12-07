@@ -923,7 +923,7 @@ def rgb_to_hsv(r, g, b):
 
 def update_charts(frames, speeds, speed_chart, frame_count, graph_color, 
                  is_final=False, frame_images=None, ball_positions=None, fps=30):
-    """차트 업데이트 - 디스플레이 수정"""
+    """차트 업데이트 - 중력 보정 및 추세선 추가"""
     try:
         # 기본 통계 계산
         avg_speed = np.mean(speeds)
@@ -931,16 +931,22 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color,
         min_speed = np.min(speeds)
         total_time = max([frame/fps for frame in frames])
         
+        # 속도 보정 및 추세선 계산
+        adjusted_speeds, adjustment_factor = adjust_speed_for_gravity(frames, speeds, fps)
+        
+        st.markdown("### 📏 속도 보정 결과")
+        st.write(f"초기 추정된 기울기: {adjustment_factor:.2f}")
+        
         if is_final:
             # 통계 표시
             st.markdown("### 전체 통계")
             cols = st.columns(4)
             with cols[0]:
-                st.metric("평균 속도", f"{avg_speed:.2f} m/s")
+                st.metric("평균 속도", f"{np.mean(adjusted_speeds):.2f} m/s")
             with cols[1]:
-                st.metric("최대 속도", f"{max_speed:.2f} m/s")
+                st.metric("최대 속도", f"{np.max(adjusted_speeds):.2f} m/s")
             with cols[2]:
-                st.metric("최소 속도", f"{min_speed:.2f} m/s")
+                st.metric("최소 속도", f"{np.min(adjusted_speeds):.2f} m/s")
             with cols[3]:
                 st.metric("총 분석 시간", f"{total_time:.2f} s")
 
@@ -951,12 +957,12 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color,
                 # 그래프 생성
                 fig = go.Figure()
                 
-                # 메인 속도 라인
+                # 보정된 속도 라인
                 fig.add_trace(go.Scatter(
                     x=[frame/fps for frame in frames],
-                    y=speeds,
+                    y=adjusted_speeds,
                     mode='lines+markers',
-                    name='Speed (m/s)',
+                    name='Speed (Adjusted)',
                     line=dict(
                         color=graph_color,
                         width=2
@@ -967,31 +973,29 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color,
                     hovertemplate='Time: %{x:.2f}s<br>Speed: %{y:.2f} m/s<extra></extra>'
                 ))
                 
+                # 추세선 추가
+                time_intervals = np.array([frame/fps for frame in frames])
+                coef = np.polyfit(time_intervals, adjusted_speeds, 1)
+                trendline = coef[0] * time_intervals + coef[1]
+                fig.add_trace(go.Scatter(
+                    x=time_intervals,
+                    y=trendline,
+                    mode='lines',
+                    name='Trendline (g)',
+                    line=dict(color='red', dash='dash'),
+                    hovertemplate='Time: %{x:.2f}s<br>Trendline: %{y:.2f} m/s<extra></extra>'
+                ))
+                
                 # 레이아웃 설정
                 fig.update_layout(
-                    title="Ball Speed Analysis",
+                    title="Ball Speed Analysis (with Gravity Adjustment)",
                     xaxis_title="Time (s)",
                     yaxis_title="Speed (m/s)",
                     plot_bgcolor='white',
                     paper_bgcolor='white',
                     font=dict(color='black'),
                     showlegend=True,
-                    height=500,
-                    xaxis=dict(
-                        showgrid=True,
-                        gridcolor='lightgrey',
-                        showline=True,
-                        linewidth=1,
-                        linecolor='black'
-                    ),
-                    yaxis=dict(
-                        showgrid=True,
-                        gridcolor='lightgrey',
-                        showline=True,
-                        linewidth=1,
-                        linecolor='black',
-                        range=[0, max_speed * 1.1]  # y축 범위 설정
-                    )
+                    height=500
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
@@ -1000,7 +1004,7 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color,
                 df = pd.DataFrame({
                     'Time (s)': [frame/fps for frame in frames],
                     'Frame': frames,
-                    'Speed (m/s)': speeds
+                    'Speed (m/s)': adjusted_speeds
                 })
                 csv = df.to_csv(index=False).encode('utf-8')
                 st.download_button(
@@ -1013,8 +1017,8 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color,
             
             with images_col:
                 # 최고/최저 속도 프레임 찾기
-                max_speed_indices = [i for i, s in enumerate(speeds) if abs(s - max_speed) < 0.01]
-                min_speed_indices = [i for i, s in enumerate(speeds) if abs(s - min_speed) < 0.01]
+                max_speed_indices = [i for i, s in enumerate(adjusted_speeds) if abs(s - max_speed) < 0.01]
+                min_speed_indices = [i for i, s in enumerate(adjusted_speeds) if abs(s - min_speed) < 0.01]
                 
                 if max_speed_indices and frame_images:
                     st.markdown(f"#### 최고 속도: {max_speed:.2f} m/s")
@@ -1035,7 +1039,7 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color,
         else:
             # 실시간 업데이트용 간단한 그래프
             last_100_frames = frames[-100:]
-            last_100_speeds = speeds[-100:]
+            last_100_speeds = adjusted_speeds[-100:]
             
             fig = go.Figure(go.Scatter(
                 x=[frame/fps for frame in last_100_frames],
@@ -1044,7 +1048,7 @@ def update_charts(frames, speeds, speed_chart, frame_count, graph_color,
                 line=dict(color=graph_color)
             ))
             fig.update_layout(
-                title="Real-time Speed",
+                title="Real-time Speed (Adjusted)",
                 xaxis_title="Time (s)",
                 yaxis_title="Speed (m/s)",
                 height=300
