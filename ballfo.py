@@ -850,7 +850,7 @@ def filter_speed(speed_queue, speeds):
         st.warning(f"속도 필터링 중 오류: {str(e)}")
         return speeds[-1] if speeds else 0  # 오류 시 이전 속도 반환        
 
-    def adjust_speed_to_g(frames, speeds, fps):
+def adjust_speed_to_g(frames, speeds, fps):
     """낙하 구간에서 속도를 수정하여 기울기가 9.8에 가까워지도록 조정"""
     time = np.array(frames) / fps  # 시간 계산
     adjusted_speeds = speeds.copy()
