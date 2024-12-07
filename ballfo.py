@@ -14,6 +14,8 @@ import urllib.request
 import time
 from streamlit_plotly_events import plotly_events  # 추가된 import
 from streamlit_image_coordinates import streamlit_image_coordinates
+from sklearn.linear_model import LinearRegression
+import matplotlib.pyplot as plt
 
 # Streamlit 페이지 설정 (반드시 다른 st 명령어보다 먼저 와야 함)
 st.set_page_config(
@@ -650,6 +652,39 @@ def initialize_yolo():
     except Exception as e:
         st.error(f"YOLO 모델 초기화 오류: {str(e)}")
         return None, None, None
+
+def adjust_speed_to_match_gravity(speeds, timestamps):
+    """속도 데이터를 9.5~9.8 범위의 기울기로 맞추기 위한 조정"""
+    adjusted_speeds = np.copy(speeds)
+    segment_start = 0
+    adjustments = []
+
+    # 순갈기울기의 변화 구간 계산
+    gradients = np.diff(speeds) / np.diff(timestamps)
+    for i, grad in enumerate(gradients):
+        if grad > 0 and gradients[i + 1] <= 0:
+            segment_end = i + 1
+            segment_times = timestamps[segment_start:segment_end + 1]
+            segment_speeds = speeds[segment_start:segment_end + 1]
+
+            # 선형 회귀 수행
+            model = LinearRegression()
+            X = np.array(segment_times).reshape(-1, 1)
+            y = np.array(segment_speeds)
+            model.fit(X, y)
+
+            slope = model.coef_[0]
+            if not (9.5 <= slope <= 9.8):
+                # 목표 기울기로 속도 조정
+                new_slope = 9.8
+                y_adjusted = model.predict(X) + (new_slope - slope) * (X.flatten() - X.mean())
+                adjustments.append((segment_start, segment_end, y_adjusted))
+                adjusted_speeds[segment_start:segment_end + 1] = y_adjusted
+
+            segment_start = segment_end
+
+    return adjusted_speeds, adjustments
+
 
 def create_stable_tracker():
     """단순화된 트래커 생성"""
@@ -1462,6 +1497,14 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
             # 프레임 처리 루프가 끝난 후 결과 표시
             if speeds:
                 st.markdown("### 📊 분석 결과")
+                # 시간 데이터 생성
+                timestamps = np.array([frame / fps for frame in frames])
+
+                # 속도 데이터 조정
+                adjusted_speeds, adjust_speed_to_match_gravity(np.array(speeds), timestamps)
+
+                # 조정된 데이터를 결과로 사용
+                speeds = adjusted_speeds.tolist()
                 
                 # 통계 표시
                 col1, col2, col3, col4 = st.columns(4)
