@@ -8,3 +8,4 @@ streamlit-image-coordinates==0.1.6
 pandas==2.2.0
 streamlit-image-coordinates
 streamlit-plotly-events
+scikit-learn>=1.0.2
