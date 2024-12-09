@@ -1680,7 +1680,7 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
                     })
                     
                     # New pixels_per_meter value
-                    pixels_per_meter = 4.02 # Adjusted based on the ideal calculation
+                    pixels_per_meter = 4.07 # Adjusted based on the ideal calculation
                     
                     # 분석 시작 버튼
                     if st.button('영상 내 공 추적 및 분석 시작하기'):
