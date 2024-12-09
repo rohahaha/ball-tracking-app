@@ -47,16 +47,6 @@ st.markdown("""
 
 # 앱 제목
 st.title('객체 탐지 및 속도 추적 프로그램_by ROHA')
-
-# 세션 상태 초기화 - 여기에 필요한 변수들 추가
-if 'initialized' not in st.session_state:
-    st.session_state.initialized = False
-    st.session_state.analysis_frames = []
-    st.session_state.analysis_speeds = []
-    st.session_state.analysis_images = {}
-    st.session_state.analysis_positions = {}
-    st.session_state.selected_frame = None
-    st.session_state.video_settings = {}  # video_settings도 추가
     
 # 전역 예외 처리
 try:
@@ -451,74 +441,14 @@ max_delta=5"""
     return cfg_content.strip()
 
 def save_yolov4_cfg():
-    """YOLOv4 설정 파일 저장"""
-    try:
-        os.makedirs(YOLO_DIR, exist_ok=True)
-        cfg_path = os.path.join(YOLO_DIR, "yolov4.cfg")
-        
-        # 먼저 URL에서 직접 다운로드 시도
-        try:
-            st.info("Downloading YOLOv4 config from source...")
-            response = urllib.request.urlopen(YOLO_FILES["yolov4.cfg"])
-            cfg_content = response.read().decode('utf-8')
-            
-            with open(cfg_path, 'w', newline='\n') as f:
-                f.write(cfg_content)
-            
-            if os.path.exists(cfg_path):
-                file_size = os.path.getsize(cfg_path)
-                if file_size > 10 * 1024:  # 10KB 이상
-                    st.success(f"Downloaded YOLOv4 configuration file (size: {file_size/1024:.1f}KB)")
-                    return True
-                
-        except Exception as e:
-            st.warning(f"Failed to download config file: {str(e)}. Trying backup method...")
-        
-        # 다운로드 실패 시 백업 URL 시도
-        backup_url = "https://github.com/AlexeyAB/darknet/raw/master/cfg/yolov4.cfg"
-        try:
-            st.info("Trying backup source for YOLOv4 config...")
-            response = urllib.request.urlopen(backup_url)
-            cfg_content = response.read().decode('utf-8')
-            
-            with open(cfg_path, 'w', newline='\n') as f:
-                f.write(cfg_content)
-            
-            if os.path.exists(cfg_path):
-                file_size = os.path.getsize(cfg_path)
-                if file_size > 10 * 1024:  # 10KB 이상
-                    st.success(f"Downloaded YOLOv4 configuration file from backup (size: {file_size/1024:.1f}KB)")
-                    return True
-                
-        except Exception as e:
-            st.warning(f"Failed to download from backup: {str(e)}. Using local template...")
-        
-        # 모든 다운로드 실패 시 로컬 템플릿 사용
-        cfg_content = create_yolov4_cfg()
-        with open(cfg_path, 'w', newline='\n') as f:
-            f.write(cfg_content)
-        
-        if os.path.exists(cfg_path):
-            file_size = os.path.getsize(cfg_path)
-            if file_size > 10 * 1024:  # 10KB 이상
-                st.success(f"Created YOLOv4 configuration file using template (size: {file_size/1024:.1f}KB)")
-                return True
-            else:
-                st.error(f"Created file is too small: {file_size/1024:.1f}KB")
-                if os.path.exists(cfg_path):
-                    os.remove(cfg_path)
-                return False
-        
-        st.error("Failed to create valid YOLOv4 configuration file")
-        if os.path.exists(cfg_path):
-            os.remove(cfg_path)
-        return False
-        
-    except Exception as e:
-        st.error(f"Error handling YOLOv4 configuration file: {str(e)}")
-        if 'cfg_path' in locals() and os.path.exists(cfg_path):
-            os.remove(cfg_path)
-        return False
+    cfg_content = create_yolov4_cfg()
+    cfg_path = os.path.join(YOLO_DIR, "yolov4.cfg")
+    os.makedirs(YOLO_DIR, exist_ok=True)
+    with open(cfg_path, 'w', newline='\n') as f:
+        f.write(cfg_content)
+    st.success("YOLOv4 설정 파일 생성 완료.")
+    return True
+
 
 def download_yolo_files():
     """YOLO 모델 파일 다운로드"""
@@ -629,14 +559,12 @@ def initialize_yolo():
                 layer_names = net.getLayerNames()
                 unconnected_layers = net.getUnconnectedOutLayers()
                 
-                if isinstance(unconnected_layers, np.ndarray):
-                    output_layers = [layer_names[i - 1] for i in unconnected_layers.flatten()]
-                elif isinstance(unconnected_layers, list):
-                    output_layers = [layer_names[int(i[0]) - 1] if isinstance(i, (list, np.ndarray)) 
-                                   else layer_names[int(i) - 1] for i in unconnected_layers]
-                else:
-                    output_layers = [layer_names[int(unconnected_layers) - 1]]
-                
+                output_layers = [
+                layer_names[i - 1] if isinstance(i, (int, np.integer)) 
+                else layer_names[int(i[0]) - 1] 
+                for i in np.atleast_1d(unconnected_layers)
+                ]
+      
                 with open(names_path, "r") as f:
                     classes = [line.strip() for line in f.readlines()]
                 
@@ -889,20 +817,6 @@ def calculate_frame_speed(positions_queue, fps, pixels_per_meter, bbox_size=None
     except Exception:
         return None
         
-def calculate_filtered_speed(speed_queue, speeds):
-    """속도 필터링 및 평균 계산"""
-    try:
-        avg_speed = sum(speed_queue) / len(speed_queue)
-        
-        # 급격한 속도 변화 필터링
-        if speeds and abs(avg_speed - speeds[-1]) > 10:
-            return speeds[-1]
-            
-        return avg_speed
-        
-    except Exception:
-        return speeds[-1] if speeds else 0
-
 def is_significant_frame(current_speed, speeds):
     """중요 프레임 판단 (최고/최저 속도 등)"""
     if not speeds:
@@ -1645,10 +1559,12 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
                     real_distance = st.number_input(
                         "선택한 두 점 사이의 실제 거리(미터)를 입력해주세요:", 
                         min_value=0.1, 
-                        value=st.session_state.video_settings.get('real_distance', 1.0) * 4, 
+                        value=st.session_state.video_settings.get('real_distance', 1.0), 
                         step=0.1
                     )
-                    
+                    # 항상 4배로 업데이트
+                    st.session_state.video_settings['real_distance'] = real_distance * 4
+             
                     # 설정값 저장
                     st.session_state.video_settings.update({
                         'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
