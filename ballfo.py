@@ -13,10 +13,12 @@ import traceback
 import urllib.request
 import time
 import sklearn
-from streamlit_plotly_events import plotly_events  # 추가된 import
+from streamlit_plotly_events import plotly_events 
 from streamlit_image_coordinates import streamlit_image_coordinates
 from sklearn.linear_model import LinearRegression
 import matplotlib.pyplot as plt
+from scipy.signal import savgol_filter
+from sklearn.preprocessing import PolynomialFeature
 
 # Streamlit 페이지 설정 (반드시 다른 st 명령어보다 먼저 와야 함)
 st.set_page_config(
@@ -654,37 +656,41 @@ def initialize_yolo():
         st.error(f"YOLO 모델 초기화 오류: {str(e)}")
         return None, None, None
 
-def adjust_speed_to_match_gravity(speeds, timestamps):
-    """속도 데이터를 9.5~9.8 범위의 기울기로 맞추기 위한 조정"""
+def adjust_speed_with_parabolic_fit(speeds, timestamps, target_slope=9.8, tolerance=0.3):
     adjusted_speeds = np.copy(speeds)
     segment_start = 0
-    adjustments = []
+    n = len(speeds)
 
-    # 순갈기울기의 변화 구간 계산
-    gradients = np.diff(speeds) / np.diff(timestamps)
-    for i, grad in enumerate(gradients):
-        if grad > 0 and gradients[i + 1] <= 0:
+    for i in range(1, n - 1):
+        # 속도 변화율 계산 (기울기)
+        current_slope = (speeds[i] - speeds[i - 1]) / (timestamps[i] - timestamps[i - 1])
+        next_slope = (speeds[i + 1] - speeds[i]) / (timestamps[i + 1] - timestamps[i])
+
+        # 변화점에서 구간 분리
+        if current_slope > 0 and next_slope <= 0:
             segment_end = i + 1
             segment_times = timestamps[segment_start:segment_end + 1]
             segment_speeds = speeds[segment_start:segment_end + 1]
 
-            # 선형 회귀 수행
+            # 2차 다항식 피팅
+            poly = PolynomialFeatures(degree=2)
+            X_poly = poly.fit_transform(segment_times.reshape(-1, 1))
             model = LinearRegression()
-            X = np.array(segment_times).reshape(-1, 1)
-            y = np.array(segment_speeds)
-            model.fit(X, y)
+            model.fit(X_poly, segment_speeds)
 
-            slope = model.coef_[0]
-            if not (9.5 <= slope <= 9.8):
-                # 목표 기울기로 속도 조정
-                new_slope = 9.8
-                y_adjusted = model.predict(X) + (new_slope - slope) * (X.flatten() - X.mean())
-                adjustments.append((segment_start, segment_end, y_adjusted))
-                adjusted_speeds[segment_start:segment_end + 1] = y_adjusted
+            # 피팅된 곡선의 기울기 조정
+            slope = model.coef_[1]  # 1차항의 계수가 기울기
+            if not (target_slope - tolerance <= slope <= target_slope + tolerance):
+                adjustment_factor = target_slope / slope if slope != 0 else 1
+                adjusted_segment_speeds = model.predict(X_poly) * adjustment_factor
+                adjusted_speeds[segment_start:segment_end + 1] = adjusted_segment_speeds
 
+            # 다음 구간 시작점 업데이트
             segment_start = segment_end
 
-    return adjusted_speeds, adjustments
+    # 전체 곡선을 부드럽게 스무딩
+    smoothed_speeds = savgol_filter(adjusted_speeds, window_length=9, polyorder=3)
+    return smoothed_speeds
 
 
 def create_stable_tracker():
@@ -1503,11 +1509,11 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
 
                 # 속도 데이터 조정
                 adjusted_speeds, _ = adjust_speed_to_match_gravity(np.array(speeds), timestamps)
-
+                
                 # 조정된 데이터를 결과로 사용
                 speeds = adjusted_speeds.tolist()
 
-                    # 조정 후 기울기 출력
+                # 조정 후 기울기 출력
                 adjusted_gradients = np.diff(speeds) / np.diff(timestamps)
                 print("조정 후 기울기:", adjusted_gradients)
                 
