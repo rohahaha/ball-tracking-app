@@ -12,13 +12,8 @@ import gdown
 import traceback
 import urllib.request
 import time
-import sklearn
-from streamlit_plotly_events import plotly_events 
+from streamlit_plotly_events import plotly_events  # 추가된 import
 from streamlit_image_coordinates import streamlit_image_coordinates
-from sklearn.linear_model import LinearRegression
-import matplotlib.pyplot as plt
-from scipy.signal import savgol_filter
-from sklearn.preprocessing import PolynomialFeatures
 
 # Streamlit 페이지 설정 (반드시 다른 st 명령어보다 먼저 와야 함)
 st.set_page_config(
@@ -655,31 +650,6 @@ def initialize_yolo():
     except Exception as e:
         st.error(f"YOLO 모델 초기화 오류: {str(e)}")
         return None, None, None
-
-def adjust_points_to_preserve_curve(speeds, timestamps, target_slope=9.8):
-    """
-    원래 곡선의 형태를 유지하면서 데이터 포인트를 조정하여 
-    구간별 기울기가 목표 기울기(9.8)에 가깝도록 만듭니다.
-    """
-    adjusted_speeds = np.copy(speeds)
-    gradients = np.diff(speeds) / np.diff(timestamps)  # 기울기 계산
-
-    for i in range(len(gradients)):
-        current_slope = gradients[i]
-        if current_slope != target_slope:
-            # 기울기 차이에 따라 점 조정
-            delta = (target_slope - current_slope) * (timestamps[i + 1] - timestamps[i])
-            adjusted_speeds[i + 1] = adjusted_speeds[i] + delta
-
-            # 조정된 점들로 새 기울기 계산 (원래 곡선 보정)
-            new_gradients = np.diff(adjusted_speeds) / np.diff(timestamps)
-
-            # 새 기울기가 원래 곡선을 과도하게 왜곡하지 않도록 스무딩
-            adjusted_speeds = savgol_filter(adjusted_speeds, window_length=7, polyorder=2)
-
-    return adjusted_speeds
-
-
 
 def create_stable_tracker():
     """단순화된 트래커 생성"""
@@ -1492,18 +1462,6 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
             # 프레임 처리 루프가 끝난 후 결과 표시
             if speeds:
                 st.markdown("### 📊 분석 결과")
-                # 시간 데이터 생성
-                timestamps = np.array([frame / fps for frame in frames])
-
-                # 속도 데이터 조정
-                adjusted_speeds = adjust_points_to_preserve_curve(np.array(speeds), timestamps)
-                
-                # 조정된 데이터를 결과로 사용
-                speeds = adjusted_speeds.tolist()
-
-                # 조정 후 기울기 출력
-                adjusted_gradients = np.diff(speeds) / np.diff(timestamps)
-                print("조정 후 기울기:", adjusted_gradients)
                 
                 # 통계 표시
                 col1, col2, col3, col4 = st.columns(4)
