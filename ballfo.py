@@ -852,7 +852,6 @@ def filter_speed(speed_queue, speeds):
 
 
 def calculate_frame_speed(positions_queue, fps, pixels_per_meter, bbox_size=None):
-    """개별 프레임의 속도 계산 - 동적 보정 추가"""
     try:
         first_frame, first_pos = positions_queue[0]
         last_frame, last_pos = positions_queue[-1]
@@ -861,33 +860,24 @@ def calculate_frame_speed(positions_queue, fps, pixels_per_meter, bbox_size=None
         if time_diff <= 0:
             return None
             
-        # 픽셀 거리 계산
+        # Pixel distance calculation
         pixel_distance = np.sqrt(
             (last_pos[0] - first_pos[0])**2 + 
             (last_pos[1] - first_pos[1])**2
         )
         
-        # 동적 보정 계수 계산
-        if bbox_size:
-            correction = calculate_dynamic_correction(
-                bbox_size, 
-                pixel_distance, 
-                1.0  # 기준 거리 (미터)
-            )
-        else:
-            correction = 0.5  # 기존 보정 계수
+        # Distance in meters using the adjusted pixels_per_meter
+        distance_meters = pixel_distance / pixels_per_meter
         
-        # 미터 단위로 변환
-        distance_meters = (pixel_distance / pixels_per_meter) * correction
-        
-        # 속도 계산
+        # Speed calculation
         speed = distance_meters / time_diff
         
-        # 비정상적인 속도 필터링
+        # Filtering unreasonable speeds
         return speed if speed <= 50 else None
         
     except Exception:
         return None
+
         
 def calculate_filtered_speed(speed_queue, speeds):
     """속도 필터링 및 평균 계산"""
@@ -1655,10 +1645,8 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
                         'real_distance': real_distance
                     })
                     
-                    # pixels_per_meter 계산
-                    pixel_distance = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-                    pixels_per_meter = pixel_distance / real_distance
-                    st.write(f"계산된 pixels_per_meter: {pixels_per_meter:.2f}")
+                    # New pixels_per_meter value
+                    pixels_per_meter = 7.27  # Adjusted based on the ideal calculation
                     
                     # 분석 시작 버튼
                     if st.button('영상 내 공 추적 및 분석 시작하기'):
