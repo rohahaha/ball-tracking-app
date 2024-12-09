@@ -1501,10 +1501,14 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 timestamps = np.array([frame / fps for frame in frames])
 
                 # 속도 데이터 조정
-                adjusted_speeds, adjust_speed_to_match_gravity(np.array(speeds), timestamps)
+                adjusted_speeds, _ = adjust_speed_to_match_gravity(np.array(speeds), timestamps)
 
                 # 조정된 데이터를 결과로 사용
                 speeds = adjusted_speeds.tolist()
+
+                    # 조정 후 기울기 출력
+                adjusted_gradients = np.diff(speeds) / np.diff(timestamps)
+                print("조정 후 기울기:", adjusted_gradients)
                 
                 # 통계 표시
                 col1, col2, col3, col4 = st.columns(4)
