@@ -1586,7 +1586,7 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
                     st.session_state.video_settings['real_distance'] = real_distance
                     
                     # 계산 시에만 4배 곱하기
-                    adjusted_real_distance = real_distance * 4
+                    adjusted_real_distance = real_distance * 4.5
                     pixel_distance = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
                     pixels_per_meter = pixel_distance / adjusted_real_distance
                     st.write(f"계산된 pixels_per_meter: {pixels_per_meter:.2f}")
