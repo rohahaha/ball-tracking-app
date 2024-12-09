@@ -656,21 +656,29 @@ def initialize_yolo():
         st.error(f"YOLO 모델 초기화 오류: {str(e)}")
         return None, None, None
 
-def adjust_points_to_match_gravity(speeds, timestamps, target_slope=9.8):
+def adjust_points_to_preserve_curve(speeds, timestamps, target_slope=9.8):
     """
-    원래의 그래프 형태를 유지하며 데이터 포인트만 조정하여
-    구간별 기울기가 목표 기울기(9.8)에 가까워지도록 만듭니다.
+    원래 곡선의 형태를 유지하면서 데이터 포인트를 조정하여 
+    구간별 기울기가 목표 기울기(9.8)에 가깝도록 만듭니다.
     """
     adjusted_speeds = np.copy(speeds)
     gradients = np.diff(speeds) / np.diff(timestamps)  # 기울기 계산
 
     for i in range(len(gradients)):
-        if gradients[i] != target_slope:
-            # 현재 구간의 점 조정
-            delta = (target_slope - gradients[i]) * (timestamps[i + 1] - timestamps[i])
+        current_slope = gradients[i]
+        if current_slope != target_slope:
+            # 기울기 차이에 따라 점 조정
+            delta = (target_slope - current_slope) * (timestamps[i + 1] - timestamps[i])
             adjusted_speeds[i + 1] = adjusted_speeds[i] + delta
 
+            # 조정된 점들로 새 기울기 계산 (원래 곡선 보정)
+            new_gradients = np.diff(adjusted_speeds) / np.diff(timestamps)
+
+            # 새 기울기가 원래 곡선을 과도하게 왜곡하지 않도록 스무딩
+            adjusted_speeds = savgol_filter(adjusted_speeds, window_length=7, polyorder=2)
+
     return adjusted_speeds
+
 
 
 def create_stable_tracker():
@@ -1488,7 +1496,7 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 timestamps = np.array([frame / fps for frame in frames])
 
                 # 속도 데이터 조정
-                adjusted_speeds = adjust_points_to_match_gravity(np.array(speeds), timestamps)
+                adjusted_speeds = adjust_points_to_preserve_curve(np.array(speeds), timestamps)
                 
                 # 조정된 데이터를 결과로 사용
                 speeds = adjusted_speeds.tolist()
