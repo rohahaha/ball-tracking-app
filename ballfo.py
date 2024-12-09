@@ -1555,21 +1555,21 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
                     
                     st.image(frame_with_info, channels="BGR", use_column_width=False)
                     
-                    # 실제 거리 입력
-                    real_distance = st.number_input(
+                    # real_distance 값 초기화
+                    if 'real_distance' not in st.session_state.video_settings:
+                        st.session_state.video_settings['real_distance'] = 1.0  # 초기값 설정
+
+                    # 사용자 입력
+                    real_distance_input = st.number_input(
                         "선택한 두 점 사이의 실제 거리(미터)를 입력해주세요:", 
                         min_value=0.1, 
-                        value=st.session_state.video_settings.get('real_distance', 1.0), 
+                        value=st.session_state.video_settings['real_distance'],  # 저장된 값 사용
                         step=0.1
                     )
-                    # 항상 4배로 업데이트
-                    st.session_state.video_settings['real_distance'] = real_distance * 4
-             
-                    # 설정값 저장
-                    st.session_state.video_settings.update({
-                        'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
-                        'real_distance': real_distance
-                    })
+
+                    # 사용자 입력에 따라 값 업데이트
+                    if real_distance_input != st.session_state.video_settings['real_distance']:
+                        st.session_state.video_settings['real_distance'] = real_distance_input * 4
                     
                     # pixels_per_meter 계산
                     pixel_distance = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
