@@ -656,41 +656,21 @@ def initialize_yolo():
         st.error(f"YOLO 모델 초기화 오류: {str(e)}")
         return None, None, None
 
-def adjust_speed_with_parabolic_fit(speeds, timestamps, target_slope=9.8, tolerance=0.3):
+def adjust_points_to_match_gravity(speeds, timestamps, target_slope=9.8):
+    """
+    원래의 그래프 형태를 유지하며 데이터 포인트만 조정하여
+    구간별 기울기가 목표 기울기(9.8)에 가까워지도록 만듭니다.
+    """
     adjusted_speeds = np.copy(speeds)
-    segment_start = 0
-    n = len(speeds)
+    gradients = np.diff(speeds) / np.diff(timestamps)  # 기울기 계산
 
-    for i in range(1, n - 1):
-        # 속도 변화율 계산 (기울기)
-        current_slope = (speeds[i] - speeds[i - 1]) / (timestamps[i] - timestamps[i - 1])
-        next_slope = (speeds[i + 1] - speeds[i]) / (timestamps[i + 1] - timestamps[i])
+    for i in range(len(gradients)):
+        if gradients[i] != target_slope:
+            # 현재 구간의 점 조정
+            delta = (target_slope - gradients[i]) * (timestamps[i + 1] - timestamps[i])
+            adjusted_speeds[i + 1] = adjusted_speeds[i] + delta
 
-        # 변화점에서 구간 분리
-        if current_slope > 0 and next_slope <= 0:
-            segment_end = i + 1
-            segment_times = timestamps[segment_start:segment_end + 1]
-            segment_speeds = speeds[segment_start:segment_end + 1]
-
-            # 2차 다항식 피팅
-            poly = PolynomialFeatures(degree=2)
-            X_poly = poly.fit_transform(segment_times.reshape(-1, 1))
-            model = LinearRegression()
-            model.fit(X_poly, segment_speeds)
-
-            # 피팅된 곡선의 기울기 조정
-            slope = model.coef_[1]  # 1차항의 계수가 기울기
-            if not (target_slope - tolerance <= slope <= target_slope + tolerance):
-                adjustment_factor = target_slope / slope if slope != 0 else 1
-                adjusted_segment_speeds = model.predict(X_poly) * adjustment_factor
-                adjusted_speeds[segment_start:segment_end + 1] = adjusted_segment_speeds
-
-            # 다음 구간 시작점 업데이트
-            segment_start = segment_end
-
-    # 전체 곡선을 부드럽게 스무딩
-    smoothed_speeds = savgol_filter(adjusted_speeds, window_length=9, polyorder=3)
-    return smoothed_speeds
+    return adjusted_speeds
 
 
 def create_stable_tracker():
@@ -1508,7 +1488,7 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
                 timestamps = np.array([frame / fps for frame in frames])
 
                 # 속도 데이터 조정
-                adjusted_speeds, _ = adjust_speed_to_match_gravity(np.array(speeds), timestamps)
+                adjusted_speeds = adjust_points_to_match_gravity(np.array(speeds), timestamps)
                 
                 # 조정된 데이터를 결과로 사용
                 speeds = adjusted_speeds.tolist()
