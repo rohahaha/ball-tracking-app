@@ -47,7 +47,22 @@ st.markdown("""
 
 # 앱 제목
 st.title('객체 탐지 및 속도 추적 프로그램_by ROHA')
-    
+
+# 앱 실행 초기화
+if 'initialized' not in st.session_state:
+    st.session_state.initialized = False
+    st.session_state.analysis_frames = []
+    st.session_state.analysis_speeds = []
+    st.session_state.analysis_images = {}
+    st.session_state.analysis_positions = {}
+    st.session_state.selected_frame = None
+    st.session_state.video_settings = {
+        'real_distance': 1.0,
+        'lower_color': None,
+        'upper_color': None,
+        'graph_color': None
+    }
+
 # 전역 예외 처리
 try:
     if not st.session_state.initialized:
