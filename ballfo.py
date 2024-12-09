@@ -12,6 +12,7 @@ import gdown
 import traceback
 import urllib.request
 import time
+import sklearn
 from streamlit_plotly_events import plotly_events  # 추가된 import
 from streamlit_image_coordinates import streamlit_image_coordinates
 from sklearn.linear_model import LinearRegression
