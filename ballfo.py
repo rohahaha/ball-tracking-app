@@ -1610,15 +1610,15 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
                     
                     with settings_col1:
                         x1 = st.slider('첫 번째 점 X 좌표', 0, width, 
-                            st.session_state.video_settings.get('x1', width // 4))
+                            st.session_state.video_settings.get('x1', 35))
                         y1 = st.slider('첫 번째 점 Y 좌표', 0, height, 
-                            st.session_state.video_settings.get('y1', height // 2))
+                            st.session_state.video_settings.get('y1', 95))
                     
                     with settings_col2:
                         x2 = st.slider('두 번째 점 X 좌표', 0, width, 
-                            st.session_state.video_settings.get('x2', 3 * width // 4))
+                            st.session_state.video_settings.get('x2', 174))
                         y2 = st.slider('두 번째 점 Y 좌표', 0, height, 
-                            st.session_state.video_settings.get('y2', height // 2))
+                            st.session_state.video_settings.get('y2', 95))
                     
                     # 프레임에 정보 표시
                     frame_with_info = first_frame.copy()
@@ -1645,7 +1645,7 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
                     real_distance = st.number_input(
                         "선택한 두 점 사이의 실제 거리(미터)를 입력해주세요:", 
                         min_value=0.1, 
-                        value=st.session_state.video_settings.get('real_distance', 1.0), 
+                        value=st.session_state.video_settings.get('real_distance', 1.0) * 4, 
                         step=0.1
                     )
                     
