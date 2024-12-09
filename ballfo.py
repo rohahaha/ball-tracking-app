@@ -18,7 +18,7 @@ from streamlit_image_coordinates import streamlit_image_coordinates
 from sklearn.linear_model import LinearRegression
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
-from sklearn.preprocessing import PolynomialFeature
+from sklearn.preprocessing import PolynomialFeatures
 
 # Streamlit 페이지 설정 (반드시 다른 st 명령어보다 먼저 와야 함)
 st.set_page_config(
