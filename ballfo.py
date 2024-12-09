@@ -866,16 +866,23 @@ def calculate_frame_speed(positions_queue, fps, pixels_per_meter, bbox_size=None
             (last_pos[1] - first_pos[1])**2
         )
         
+        # Debugging print
+        print(f"Pixel Distance: {pixel_distance}, Pixels per Meter: {pixels_per_meter}")
+
         # Distance in meters using the adjusted pixels_per_meter
         distance_meters = pixel_distance / pixels_per_meter
         
         # Speed calculation
         speed = distance_meters / time_diff
         
+        # Debugging print
+        print(f"Speed (m/s): {speed}, Time Diff: {time_diff}")
+
         # Filtering unreasonable speeds
         return speed if speed <= 50 else None
         
     except Exception:
+        print(f"Error in speed calculation: {e}")
         return None
 
         
@@ -1673,7 +1680,7 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
                     })
                     
                     # New pixels_per_meter value
-                    pixels_per_meter = 7.27  # Adjusted based on the ideal calculation
+                    pixels_per_meter = 48.38 # Adjusted based on the ideal calculation
                     
                     # 분석 시작 버튼
                     if st.button('영상 내 공 추적 및 분석 시작하기'):
