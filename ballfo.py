@@ -1556,17 +1556,16 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
                     st.image(frame_with_info, channels="BGR", use_column_width=False)
 
 
-
                   # real_distance 초기화
-                  if 'real_distance' not in st.session_state.video_settings:
-                      st.session_state.video_settings['real_distance'] = 1.0  # 초기값 설정
+                   if 'real_distance' not in st.session_state.video_settings:
+                       st.session_state.video_settings['real_distance'] = 1.0  # 초기값 설정
                       
                   # 사용자 입력 받기 
                    real_distance = st.number_input(
-                        "선택한 두 점 사이의 실제 거리(미터)를 입력해주세요:",
-                        min_value=0.1,
+                       "선택한 두 점 사이의 실제 거리(미터)를 입력해주세요:",
+                       min_value=0.1,
                        value=st.session_state.video_settings['real_distance'], 
-                        step=0.1
+                       step=0.1
                     )
 
                     # 상태 업데이트 (곱하지 않음)
