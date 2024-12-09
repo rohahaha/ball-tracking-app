@@ -1536,6 +1536,33 @@ def process_video(video_path, initial_bbox, pixels_per_meter, net, output_layers
         frame_images.clear()
         ball_positions.clear()
         
+def calculate_slopes(frames, speeds, slope_range=(9.4, 9.8)):
+    segments = []
+    slopes = []
+    remaining_indices = list(range(len(speeds)))
+
+    while remaining_indices:
+        current_min_idx = min(remaining_indices, key=lambda i: speeds[i])
+        current_max_idx = max(remaining_indices, key=lambda i: speeds[i])
+
+        if current_min_idx < current_max_idx:
+            segment = remaining_indices[current_min_idx:current_max_idx + 1]
+            slope = (speeds[current_max_idx] - speeds[current_min_idx]) / \
+                    (frames[current_max_idx] - frames[current_min_idx])
+            
+            if slope_range[0] <= slope <= slope_range[1]:
+                segments.append(segment)
+                slopes.append(slope)
+                for idx in segment:
+                    remaining_indices.remove(idx)
+            else:
+                break
+        else:
+            break
+
+    return segments, slopes
+
+
 
 def process_uploaded_video(uploaded_file, net, output_layers, classes):
     """업로드된 비디오 처리 - 파일 객체와 경로 문자열 모두 지원"""
