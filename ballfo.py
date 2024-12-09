@@ -1554,27 +1554,28 @@ def process_uploaded_video(uploaded_file, net, output_layers, classes):
                     cv2.circle(frame_with_info, (click_x, click_y), 5, tuple(map(int, selected_color)), -1)
                     
                     st.image(frame_with_info, channels="BGR", use_column_width=False)
-
-
-                  # real_distance 초기화
-                   if 'real_distance' not in st.session_state.video_settings:
-                       st.session_state.video_settings['real_distance'] = 1.0  # 초기값 설정
-                      
-                  # 사용자 입력 받기 
-                   real_distance = st.number_input(
-                       "선택한 두 점 사이의 실제 거리(미터)를 입력해주세요:",
-                       min_value=0.1,
-                       value=st.session_state.video_settings['real_distance'], 
-                       step=0.1
+                          
+                    # real_distance 초기화
+                    if 'real_distance' not in st.session_state.video_settings:
+                        st.session_state.video_settings['real_distance'] = 1.0  # 초기값 설정
+                    
+                    # 사용자 입력
+                    real_distance = st.number_input(
+                        "선택한 두 점 사이의 실제 거리(미터)를 입력해주세요:",
+                        min_value=0.1,
+                        value=st.session_state.video_settings['real_distance'],  # 저장된 값 사용
+                        step=0.1
                     )
-
-                    # 상태 업데이트 (곱하지 않음)
+                    
+                    # 상태 업데이트
                     st.session_state.video_settings['real_distance'] = real_distance
-
-                    # 계산 시에만 4배를 곱함
+                    
+                    # 계산 시에만 4배 곱하기
                     adjusted_real_distance = real_distance * 4
+                    pixel_distance = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
                     pixels_per_meter = pixel_distance / adjusted_real_distance
                     st.write(f"계산된 pixels_per_meter: {pixels_per_meter:.2f}")
+
                     
                     # 분석 시작 버튼
                     if st.button('영상 내 공 추적 및 분석 시작하기'):
